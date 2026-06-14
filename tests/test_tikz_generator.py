@@ -34,6 +34,22 @@ def test_generate_tikz_picture_can_emit_bezier_controls() -> None:
     assert ".. controls" in code
 
 
+def test_generate_tikz_picture_can_require_more_points_for_bezier() -> None:
+    contour = Contour(
+        points=np.array([[0, 0], [10, 15], [20, 0], [30, 10]], dtype=float),
+        closed=False,
+    )
+
+    code = generate_tikz_picture(
+        [contour],
+        (40, 40, 3),
+        TikzOptions(use_bezier=True, bezier_min_points=5),
+    )
+
+    assert ".. controls" not in code
+    assert "--" in code
+
+
 def test_wrap_standalone_document_contains_tikz_package() -> None:
     document = wrap_standalone_document("\\begin{tikzpicture}\n\\end{tikzpicture}")
 

@@ -23,6 +23,8 @@ class TikzOptions:
     width_units: float = 10.0
     precision: int = 2
     max_paths: int | None = None
+    bezier_min_points: int = 4
+    bezier_tension: float = 1.0
 
 
 _SAFE_COLOR = re.compile(r"^[A-Za-z][A-Za-z0-9!._-]*$")
@@ -82,10 +84,10 @@ def _line_path(points: np.ndarray, *, closed: bool, options: TikzOptions) -> lis
 
 
 def _bezier_path(points: np.ndarray, *, closed: bool, options: TikzOptions) -> list[str]:
-    if not can_use_bezier(points):
+    if not can_use_bezier(points, min_points=options.bezier_min_points):
         return _line_path(points, closed=closed, options=options)
 
-    segments = catmull_rom_to_bezier(points, closed=closed)
+    segments = catmull_rom_to_bezier(points, closed=closed, tension=options.bezier_tension)
     if not segments:
         return []
 
