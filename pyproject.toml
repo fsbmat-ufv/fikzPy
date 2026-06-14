@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fikzpy"
+version = "0.1.0"
+description = "Desktop tool for converting image contours into editable TikZ code."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "fikzPy contributors" }
+]
+keywords = ["tikz", "latex", "opencv", "computer-vision", "desktop"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Win32 (MS Windows)",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
+  "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+  "numpy>=1.24",
+  "opencv-python>=4.8",
+  "PySide6>=6.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pyinstaller>=6.0",
+]
+
+[project.scripts]
+fikzpy = "fikzpy.main:main"
+
+[project.urls]
+Homepage = "https://github.com/fsbmat-ufv/fikzPy"
+Repository = "https://github.com/fsbmat-ufv/fikzPy.git"
+Issues = "https://github.com/fsbmat-ufv/fikzPy/issues"
+
+[tool.setuptools.packages.find]
+include = ["fikzpy*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
