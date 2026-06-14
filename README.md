@@ -50,8 +50,9 @@ fikzpy
 2. Choose the vectorization mode. `Line art` is best for black-and-white
    drawings with internal strokes; `Contornos` keeps the classic Canny contour
    pipeline.
-3. Adjust smoothing, Canny thresholds, simplification, TikZ scale, line width,
-   line color, and Bezier usage in the parameter panel.
+3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
+   width, line color, and Bezier usage in the parameter panel. In `Contornos`
+   mode, the Canny thresholds are also used.
 4. Review the generated TikZ code on the right.
 5. Toggle the preview between the original image, contour overlay, and
    reconstructed drawing.
@@ -123,8 +124,9 @@ line drawings, fikzPy now uses a default stroke-tracing backend:
 1. threshold dark ink;
 2. skeletonize strokes;
 3. trace open and closed paths;
-4. simplify paths;
-5. emit editable TikZ.
+4. smooth pixel stair-stepping;
+5. simplify paths;
+6. emit editable TikZ.
 
 `svg2tikz` is a strong candidate for a future optional backend, but it converts
 existing SVG paths to TikZ. It does not by itself solve JPEG/PNG recognition, so

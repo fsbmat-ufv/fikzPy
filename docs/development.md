@@ -41,7 +41,8 @@ python scripts/build_exe.py
 
 The default backend is `line_art`, which is intended for black-and-white
 drawings, sketches, diagrams, and scanned line art. It thresholds dark ink,
-skeletonizes strokes, traces open paths, and then emits TikZ.
+skeletonizes strokes, smooths pixel stair-stepping, traces open paths, and then
+emits TikZ.
 
 The `contours` backend keeps the first MVP approach based on Canny edges and
 OpenCV contours. It is useful for simple closed shapes, but it is usually less

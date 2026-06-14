@@ -139,6 +139,16 @@ class MainWindow(QMainWindow):
         self.vectorization_mode_combo.addItem("Contornos", "contours")
         form.addRow("Modo", self.vectorization_mode_combo)
 
+        self.ink_threshold_spin = QSpinBox()
+        self.ink_threshold_spin.setRange(120, 245)
+        self.ink_threshold_spin.setValue(215)
+        form.addRow("Limiar tinta", self.ink_threshold_spin)
+
+        self.stroke_smoothing_spin = QSpinBox()
+        self.stroke_smoothing_spin.setRange(0, 3)
+        self.stroke_smoothing_spin.setValue(1)
+        form.addRow("Suav. traco", self.stroke_smoothing_spin)
+
         self.smoothing_spin = QSpinBox()
         self.smoothing_spin.setRange(1, 31)
         self.smoothing_spin.setSingleStep(2)
@@ -199,6 +209,8 @@ class MainWindow(QMainWindow):
             self.tikz_scale_spin,
             self.width_units_spin,
             self.line_width_spin,
+            self.ink_threshold_spin,
+            self.stroke_smoothing_spin,
         ):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
@@ -267,6 +279,8 @@ class MainWindow(QMainWindow):
             canny_low=self.canny_low_spin.value(),
             canny_high=self.canny_high_spin.value(),
             simplify_epsilon=self.simplify_spin.value(),
+            line_art_threshold=self.ink_threshold_spin.value(),
+            stroke_smoothing=self.stroke_smoothing_spin.value(),
         )
 
     def tikz_options(self) -> TikzOptions:

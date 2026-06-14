@@ -21,6 +21,8 @@ python -m fikzpy.main
    - `Line art` for drawings, sketches, and images with internal strokes;
    - `Contornos` for the classic Canny contour pipeline.
 3. Adjust the parameters:
+   - ink threshold for faint strokes;
+   - stroke smoothing;
    - smoothing;
    - Canny low/high thresholds;
    - simplification;

@@ -20,8 +20,11 @@ class StrokeTracingSettings:
 
     threshold_block_size: int = 35
     threshold_offset: int = 9
+    dark_threshold: int = 215
+    background_margin: int = 12
     min_component_area: int = 8
     min_path_length: int = 3
+    smooth_iterations: int = 1
 
 
 def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = None) -> np.ndarray:
@@ -32,9 +35,10 @@ def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = 
 
     denoised = cv2.medianBlur(gray, 3)
     otsu_threshold, _ = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    threshold = _line_art_threshold(denoised, otsu_threshold, settings)
 
-    if otsu_threshold < 245:
-        _, mask = cv2.threshold(denoised, otsu_threshold, 255, cv2.THRESH_BINARY_INV)
+    if threshold < 245:
+        _, mask = cv2.threshold(denoised, threshold, 255, cv2.THRESH_BINARY_INV)
     else:
         block_size = _odd_at_least(settings.threshold_block_size, 3)
         mask = cv2.adaptiveThreshold(
@@ -70,6 +74,7 @@ def trace_strokes_from_skeleton(
     *,
     simplify_epsilon: float = 0.01,
     min_path_length: int = 8,
+    smooth_iterations: int = 1,
 ) -> list[Contour]:
     """Trace skeleton pixels into drawable open and closed strokes."""
     pixels = _skeleton_pixels(skeleton)
@@ -103,6 +108,7 @@ def trace_strokes_from_skeleton(
             continue
 
         points = np.array([[x, y] for y, x in path], dtype=np.float64)
+        points = _smooth_polyline(points, closed=closed, iterations=smooth_iterations)
         simplified = simplify_polyline(points, epsilon_ratio=simplify_epsilon, closed=closed)
         if len(simplified) < 2:
             continue
@@ -128,8 +134,44 @@ def trace_line_art_strokes(
         skeleton,
         simplify_epsilon=simplify_epsilon,
         min_path_length=settings.min_path_length,
+        smooth_iterations=settings.smooth_iterations,
     )
     return contours, ink_mask, skeleton
+
+
+def _line_art_threshold(
+    denoised: np.ndarray,
+    otsu_threshold: float,
+    settings: StrokeTracingSettings,
+) -> float:
+    """Choose a threshold that keeps faint ink on bright backgrounds."""
+    background = float(np.percentile(denoised, 95))
+    threshold = float(otsu_threshold)
+
+    if background >= 230:
+        threshold = max(threshold, float(settings.dark_threshold))
+        threshold = min(threshold, background - float(settings.background_margin))
+
+    return max(0.0, min(255.0, threshold))
+
+
+def _smooth_polyline(points: np.ndarray, *, closed: bool, iterations: int) -> np.ndarray:
+    """Reduce pixel stair-stepping while preserving endpoints of open strokes."""
+    pts = np.asarray(points, dtype=np.float64)
+    if len(pts) < 4 or iterations <= 0:
+        return pts
+
+    for _ in range(iterations):
+        if closed:
+            previous_points = np.roll(pts, 1, axis=0)
+            next_points = np.roll(pts, -1, axis=0)
+            pts = (previous_points + 2.0 * pts + next_points) / 4.0
+        else:
+            smoothed = pts.copy()
+            smoothed[1:-1] = (pts[:-2] + 2.0 * pts[1:-1] + pts[2:]) / 4.0
+            pts = smoothed
+
+    return pts
 
 
 def _zhang_suen_candidates(image: np.ndarray, step: int) -> np.ndarray:

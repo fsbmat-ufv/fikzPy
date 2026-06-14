@@ -24,6 +24,8 @@ class ProcessingSettings:
     min_contour_area: float = 8.0
     min_contour_perimeter: float = 8.0
     min_path_length: int = 3
+    line_art_threshold: int = 215
+    stroke_smoothing: int = 1
 
 
 @dataclass(frozen=True)
@@ -132,7 +134,11 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
         contours, ink_mask, skeleton = trace_line_art_strokes(
             gray,
             simplify_epsilon=settings.simplify_epsilon,
-            settings=StrokeTracingSettings(min_path_length=settings.min_path_length),
+            settings=StrokeTracingSettings(
+                dark_threshold=settings.line_art_threshold,
+                min_path_length=settings.min_path_length,
+                smooth_iterations=settings.stroke_smoothing,
+            ),
         )
         edges = skeleton
     else:
