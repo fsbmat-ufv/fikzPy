@@ -49,3 +49,16 @@ def test_process_image_returns_overlay_and_reconstruction() -> None:
     assert result.overlay_bgr.shape == image.shape
     assert result.reconstruction_bgr.shape == image.shape
     assert result.contours
+
+
+def test_process_image_line_art_alias_matches_classic_mode() -> None:
+    image = np.full((64, 64, 3), 255, dtype=np.uint8)
+    cv2.line(image, (10, 30), (54, 30), (0, 0, 0), 2)
+
+    classic = process_image(image, ProcessingSettings(vectorization_mode="classic"))
+    alias = process_image(image, ProcessingSettings(vectorization_mode="line_art"))
+
+    assert len(classic.contours) == len(alias.contours)
+    assert sum(len(contour.points) for contour in classic.contours) == sum(
+        len(contour.points) for contour in alias.contours
+    )

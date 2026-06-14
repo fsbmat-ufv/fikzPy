@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 
 from fikzpy.core.contour_detector import Contour, simplify_polyline
+from fikzpy.core.preprocessing import apply_mask_morphology, preprocess_gray
+from fikzpy.core.vectorization_config import PreprocessingConfig
 
 
 Pixel = tuple[int, int]
@@ -125,10 +127,14 @@ def trace_line_art_strokes(
     *,
     simplify_epsilon: float = 0.01,
     settings: StrokeTracingSettings | None = None,
+    preprocessing: PreprocessingConfig | None = None,
 ) -> tuple[list[Contour], np.ndarray, np.ndarray]:
     """Extract line-art strokes and return contours, ink mask, and skeleton."""
     settings = settings or StrokeTracingSettings()
-    ink_mask = extract_ink_mask(gray, settings)
+    source = preprocess_gray(gray, preprocessing) if preprocessing is not None else gray
+    ink_mask = extract_ink_mask(source, settings)
+    if preprocessing is not None:
+        ink_mask = apply_mask_morphology(ink_mask, preprocessing)
     skeleton = skeletonize(ink_mask)
     contours = trace_strokes_from_skeleton(
         skeleton,

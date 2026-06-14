@@ -79,20 +79,20 @@ class VectorizationConfig:
                 morphology_kernel=2,
             ),
             cleaning=ContourCleaningConfig(
-                min_length=4.0,
+                min_length=3.0,
                 min_points=2,
-                deduplicate=True,
-                duplicate_distance=1.2,
+                deduplicate=False,
+                duplicate_distance=1.0,
             ),
             merging=ContourMergingConfig(
                 enabled=True,
-                max_distance=3.0,
-                max_angle=40.0,
+                max_distance=2.0,
+                max_angle=30.0,
             ),
             smoothing=PathSmoothingConfig(
                 enabled=True,
                 iterations=1,
-                simplify_epsilon=0.004,
+                simplify_epsilon=0.003,
                 prefer_bezier=True,
             ),
         )

@@ -8,15 +8,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from fikzpy.core.contour_cleaning import filter_contours
 from fikzpy.core.contour_detector import Contour, detect_contours_from_edges
+from fikzpy.core.contour_merging import merge_nearby_contours
+from fikzpy.core.contour_smoothing import smooth_contours
 from fikzpy.core.stroke_tracer import StrokeTracingSettings, trace_line_art_strokes
+from fikzpy.core.vectorization_config import config_for_mode
 
 
 @dataclass(frozen=True)
 class ProcessingSettings:
     """User-adjustable parameters for image to contour conversion."""
 
-    vectorization_mode: str = "line_art"
+    vectorization_mode: str = "classic"
     smoothing: int = 5
     canny_low: int = 50
     canny_high: int = 150
@@ -117,12 +121,13 @@ def make_reconstruction(
 def process_image(image: np.ndarray, settings: ProcessingSettings | None = None) -> ProcessingResult:
     """Run the full image processing pipeline."""
     settings = settings or ProcessingSettings()
+    vector_config = config_for_mode(settings.vectorization_mode)
     gray = to_gray(image)
     blurred = smooth_image(gray, settings.smoothing)
 
     ink_mask = None
     skeleton = None
-    if settings.vectorization_mode == "contours":
+    if vector_config.mode == "contours":
         edges = detect_edges(blurred, settings.canny_low, settings.canny_high)
         contours = detect_contours_from_edges(
             edges,
@@ -130,7 +135,7 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
-    elif settings.vectorization_mode == "line_art":
+    elif vector_config.mode in {"classic", "smooth"}:
         contours, ink_mask, skeleton = trace_line_art_strokes(
             gray,
             simplify_epsilon=settings.simplify_epsilon,
@@ -139,10 +144,25 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
                 min_path_length=settings.min_path_length,
                 smooth_iterations=settings.stroke_smoothing,
             ),
+            preprocessing=vector_config.preprocessing if vector_config.mode == "smooth" else None,
         )
+        if vector_config.mode == "smooth":
+            contours = filter_contours(contours, vector_config.cleaning)
+            if vector_config.merging.enabled:
+                contours = merge_nearby_contours(
+                    contours,
+                    max_distance=vector_config.merging.max_distance,
+                    max_angle=vector_config.merging.max_angle,
+                )
+            if vector_config.smoothing.enabled:
+                contours = smooth_contours(
+                    contours,
+                    iterations=vector_config.smoothing.iterations,
+                    simplify_epsilon=vector_config.smoothing.simplify_epsilon,
+                )
         edges = skeleton
     else:
-        raise ValueError(f"Unsupported vectorization mode: {settings.vectorization_mode}")
+        raise ValueError(f"Unsupported vectorization mode: {vector_config.mode}")
 
     overlay = make_overlay(image, contours)
     reconstruction = make_reconstruction(image.shape, contours)

@@ -135,7 +135,8 @@ class MainWindow(QMainWindow):
         form = QFormLayout(panel)
 
         self.vectorization_mode_combo = QComboBox()
-        self.vectorization_mode_combo.addItem("Line art", "line_art")
+        self.vectorization_mode_combo.addItem("Classic", "classic")
+        self.vectorization_mode_combo.addItem("Smooth", "smooth")
         self.vectorization_mode_combo.addItem("Contornos", "contours")
         form.addRow("Modo", self.vectorization_mode_combo)
 
@@ -289,7 +290,7 @@ class MainWindow(QMainWindow):
             tikz_scale=self.tikz_scale_spin.value(),
             line_width=self.line_width_spin.value(),
             line_color=self.line_color_edit.text(),
-            use_bezier=self.bezier_check.isChecked(),
+            use_bezier=self.bezier_check.isChecked() or self.vectorization_mode_combo.currentData() == "smooth",
             width_units=self.width_units_spin.value(),
         )
 
