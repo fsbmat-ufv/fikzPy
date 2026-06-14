@@ -41,16 +41,26 @@ def _as_cv_contour(contour: np.ndarray) -> np.ndarray:
 
 def simplify_contour(contour: np.ndarray, epsilon_ratio: float = 0.01) -> np.ndarray:
     """Simplify a contour with the Douglas-Peucker algorithm."""
-    cv_contour = _as_cv_contour(contour)
-    perimeter = cv2.arcLength(cv_contour, True)
+    return simplify_polyline(contour, epsilon_ratio=epsilon_ratio, closed=True)
+
+
+def simplify_polyline(
+    points: np.ndarray,
+    *,
+    epsilon_ratio: float = 0.01,
+    closed: bool = False,
+) -> np.ndarray:
+    """Simplify an open or closed polyline with Douglas-Peucker."""
+    cv_contour = _as_cv_contour(points)
+    perimeter = cv2.arcLength(cv_contour, closed)
     epsilon = max(float(epsilon_ratio), 0.0) * perimeter
-    simplified = cv2.approxPolyDP(cv_contour, epsilon, True)
-    points = simplified.reshape(-1, 2).astype(np.float64)
+    simplified = cv2.approxPolyDP(cv_contour, epsilon, closed)
+    simplified_points = simplified.reshape(-1, 2).astype(np.float64)
 
-    if len(points) > 1 and np.allclose(points[0], points[-1]):
-        points = points[:-1]
+    if closed and len(simplified_points) > 1 and np.allclose(simplified_points[0], simplified_points[-1]):
+        simplified_points = simplified_points[:-1]
 
-    return points
+    return simplified_points
 
 
 def detect_contours_from_edges(
@@ -65,7 +75,7 @@ def detect_contours_from_edges(
         raise ValueError("Edge image must be a single-channel array.")
 
     edge_image = edges.astype(np.uint8, copy=False)
-    found, _ = cv2.findContours(edge_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    found, _ = cv2.findContours(edge_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
     contours: list[Contour] = []
     for raw in found:

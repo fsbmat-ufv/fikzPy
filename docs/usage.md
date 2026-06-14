@@ -17,7 +17,10 @@ python -m fikzpy.main
 ## Generate TikZ
 
 1. Choose **Arquivo > Abrir imagem**.
-2. Adjust the parameters:
+2. Choose the vectorization mode:
+   - `Line art` for drawings, sketches, and images with internal strokes;
+   - `Contornos` for the classic Canny contour pipeline.
+3. Adjust the parameters:
    - smoothing;
    - Canny low/high thresholds;
    - simplification;
@@ -25,10 +28,10 @@ python -m fikzpy.main
    - line width;
    - line color;
    - Bezier mode.
-3. Click **Gerar TikZ** if automatic regeneration is not enough.
-4. Use **Visualizacao** to compare the original, overlay, and reconstructed
+4. Click **Gerar TikZ** if automatic regeneration is not enough.
+5. Use **Visualizacao** to compare the original, overlay, and reconstructed
    drawing.
-5. Export the result with **Arquivo > Exportar .tex**.
+6. Export the result with **Arquivo > Exportar .tex**.
 
 ## Compile
 

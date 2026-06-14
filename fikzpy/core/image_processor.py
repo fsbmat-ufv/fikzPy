@@ -8,20 +8,22 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from fikzpy.core.contour_detector import Contour, contours_to_polylines
-from fikzpy.core.contour_detector import detect_contours_from_edges
+from fikzpy.core.contour_detector import Contour, detect_contours_from_edges
+from fikzpy.core.stroke_tracer import StrokeTracingSettings, trace_line_art_strokes
 
 
 @dataclass(frozen=True)
 class ProcessingSettings:
     """User-adjustable parameters for image to contour conversion."""
 
+    vectorization_mode: str = "line_art"
     smoothing: int = 5
     canny_low: int = 50
     canny_high: int = 150
-    simplify_epsilon: float = 0.01
+    simplify_epsilon: float = 0.006
     min_contour_area: float = 8.0
     min_contour_perimeter: float = 8.0
+    min_path_length: int = 3
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,8 @@ class ProcessingResult:
     contours: list[Contour]
     overlay_bgr: np.ndarray
     reconstruction_bgr: np.ndarray
+    ink_mask: np.ndarray | None = None
+    skeleton: np.ndarray | None = None
 
 
 def load_image(path: str | Path) -> np.ndarray:
@@ -90,9 +94,7 @@ def make_overlay(
 ) -> np.ndarray:
     """Draw contours on top of the original image."""
     overlay = image_bgr.copy()
-    polylines = contours_to_polylines(contours)
-    if polylines:
-        cv2.polylines(overlay, polylines, True, color_bgr, thickness, cv2.LINE_AA)
+    _draw_contours(overlay, contours, color_bgr, thickness)
     return cv2.addWeighted(image_bgr, alpha, overlay, 1.0 - alpha, 0)
 
 
@@ -106,9 +108,7 @@ def make_reconstruction(
     """Draw detected contours on a white canvas."""
     height, width = image_shape[:2]
     canvas = np.full((height, width, 3), 255, dtype=np.uint8)
-    polylines = contours_to_polylines(contours)
-    if polylines:
-        cv2.polylines(canvas, polylines, True, line_color_bgr, thickness, cv2.LINE_AA)
+    _draw_contours(canvas, contours, line_color_bgr, thickness)
     return canvas
 
 
@@ -117,13 +117,27 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
     settings = settings or ProcessingSettings()
     gray = to_gray(image)
     blurred = smooth_image(gray, settings.smoothing)
-    edges = detect_edges(blurred, settings.canny_low, settings.canny_high)
-    contours = detect_contours_from_edges(
-        edges,
-        simplify_epsilon=settings.simplify_epsilon,
-        min_area=settings.min_contour_area,
-        min_perimeter=settings.min_contour_perimeter,
-    )
+
+    ink_mask = None
+    skeleton = None
+    if settings.vectorization_mode == "contours":
+        edges = detect_edges(blurred, settings.canny_low, settings.canny_high)
+        contours = detect_contours_from_edges(
+            edges,
+            simplify_epsilon=settings.simplify_epsilon,
+            min_area=settings.min_contour_area,
+            min_perimeter=settings.min_contour_perimeter,
+        )
+    elif settings.vectorization_mode == "line_art":
+        contours, ink_mask, skeleton = trace_line_art_strokes(
+            gray,
+            simplify_epsilon=settings.simplify_epsilon,
+            settings=StrokeTracingSettings(min_path_length=settings.min_path_length),
+        )
+        edges = skeleton
+    else:
+        raise ValueError(f"Unsupported vectorization mode: {settings.vectorization_mode}")
+
     overlay = make_overlay(image, contours)
     reconstruction = make_reconstruction(image.shape, contours)
 
@@ -135,9 +149,24 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
         contours=contours,
         overlay_bgr=overlay,
         reconstruction_bgr=reconstruction,
+        ink_mask=ink_mask,
+        skeleton=skeleton,
     )
 
 
 def process_image_file(path: str | Path, settings: ProcessingSettings | None = None) -> ProcessingResult:
     """Load an image and run the full processing pipeline."""
     return process_image(load_image(path), settings)
+
+
+def _draw_contours(
+    canvas: np.ndarray,
+    contours: list[Contour],
+    color_bgr: tuple[int, int, int],
+    thickness: int,
+) -> None:
+    for contour in contours:
+        if not contour.is_drawable:
+            continue
+        polyline = np.rint(contour.points).astype(np.int32).reshape(-1, 1, 2)
+        cv2.polylines(canvas, [polyline], contour.closed, color_bgr, thickness, cv2.LINE_AA)

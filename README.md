@@ -5,14 +5,16 @@ editable TikZ code for LaTeX. The project is designed for academic and teaching
 workflows where a raster image can serve as the starting point for a compact
 vector drawing.
 
-The current version is an MVP: it opens an image, detects contours with OpenCV,
-simplifies the resulting paths, generates TikZ `\draw` commands, previews the
-detected strokes, and exports a standalone `.tex` file.
+The current version is an MVP: it opens an image, traces line-art strokes or
+detects contours with OpenCV, simplifies the resulting paths, generates TikZ
+`\draw` commands, previews the detected strokes, and exports a standalone `.tex`
+file.
 
 ## Goals
 
 - Load common raster image formats.
-- Detect edges and contours with a small, transparent computer vision pipeline.
+- Trace line-art drawings with a small, transparent computer vision pipeline.
+- Keep a classic Canny/contour mode for geometric or filled images.
 - Generate minimal TikZ using `\draw`, paths, coordinates, scopes, and optional
   cubic Bezier curves.
 - Keep generated code concise enough to edit by hand.
@@ -45,13 +47,16 @@ fikzpy
 ## Basic Workflow
 
 1. Open an image with **Arquivo > Abrir imagem**.
-2. Adjust smoothing, Canny thresholds, simplification, TikZ scale, line width,
+2. Choose the vectorization mode. `Line art` is best for black-and-white
+   drawings with internal strokes; `Contornos` keeps the classic Canny contour
+   pipeline.
+3. Adjust smoothing, Canny thresholds, simplification, TikZ scale, line width,
    line color, and Bezier usage in the parameter panel.
-3. Review the generated TikZ code on the right.
-4. Toggle the preview between the original image, contour overlay, and
+4. Review the generated TikZ code on the right.
+5. Toggle the preview between the original image, contour overlay, and
    reconstructed drawing.
-5. Copy the TikZ code or export a standalone `.tex` file.
-6. If a LaTeX distribution is installed, compile and open the generated PDF.
+6. Copy the TikZ code or export a standalone `.tex` file.
+7. If a LaTeX distribution is installed, compile and open the generated PDF.
 
 ## LaTeX Support
 
@@ -109,6 +114,22 @@ informed by existing TikZ/Python projects and TikZ editors:
   `C:\Users\Fernando\Documents\GitHub\KTikz\TikzEdtBeta0_2_3`
 
 No code was copied from these projects.
+
+## Vectorization Notes
+
+Raster images need a raster-to-vector step before TikZ can be generated. For
+line drawings, fikzPy now uses a default stroke-tracing backend:
+
+1. threshold dark ink;
+2. skeletonize strokes;
+3. trace open and closed paths;
+4. simplify paths;
+5. emit editable TikZ.
+
+`svg2tikz` is a strong candidate for a future optional backend, but it converts
+existing SVG paths to TikZ. It does not by itself solve JPEG/PNG recognition, so
+it should be paired with an SVG vectorizer such as Inkscape Trace Bitmap or
+potrace.
 
 ## Roadmap
 

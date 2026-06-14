@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDockWidget,
     QDoubleSpinBox,
     QFileDialog,
@@ -133,6 +134,11 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         form = QFormLayout(panel)
 
+        self.vectorization_mode_combo = QComboBox()
+        self.vectorization_mode_combo.addItem("Line art", "line_art")
+        self.vectorization_mode_combo.addItem("Contornos", "contours")
+        form.addRow("Modo", self.vectorization_mode_combo)
+
         self.smoothing_spin = QSpinBox()
         self.smoothing_spin.setRange(1, 31)
         self.smoothing_spin.setSingleStep(2)
@@ -153,7 +159,7 @@ class MainWindow(QMainWindow):
         self.simplify_spin.setRange(0.001, 0.2)
         self.simplify_spin.setDecimals(3)
         self.simplify_spin.setSingleStep(0.005)
-        self.simplify_spin.setValue(0.01)
+        self.simplify_spin.setValue(0.006)
         form.addRow("Simplificacao", self.simplify_spin)
 
         self.tikz_scale_spin = QDoubleSpinBox()
@@ -196,6 +202,7 @@ class MainWindow(QMainWindow):
         ):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
+        self.vectorization_mode_combo.currentIndexChanged.connect(self._settings_changed)
         self.line_color_edit.editingFinished.connect(self._settings_changed)
 
         dock.setWidget(panel)
@@ -255,6 +262,7 @@ class MainWindow(QMainWindow):
     def processing_settings(self) -> ProcessingSettings:
         """Read image-processing settings from the UI."""
         return ProcessingSettings(
+            vectorization_mode=self.vectorization_mode_combo.currentData(),
             smoothing=self.smoothing_spin.value(),
             canny_low=self.canny_low_spin.value(),
             canny_high=self.canny_high_spin.value(),
@@ -303,7 +311,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # pragma: no cover - user-facing guard
             QMessageBox.critical(self, "Erro ao gerar TikZ", str(exc))
 
-    def _settings_changed(self) -> None:
+    def _settings_changed(self, *args) -> None:
         if self.original_image is not None:
             self.generate_tikz()
 
