@@ -18,7 +18,9 @@ python -m fikzpy.main
 
 1. Choose **Arquivo > Abrir imagem**.
 2. Choose the vectorization mode:
-   - `Line art` for drawings, sketches, and images with internal strokes;
+   - `Classic` for the stable line-art behavior;
+   - `Smooth` for experimental filtering, endpoint merging, smoothing, and
+     Bezier paths;
    - `Contornos` for the classic Canny contour pipeline.
 3. Adjust the parameters:
    - ink threshold for faint strokes;
@@ -42,3 +44,18 @@ or select a manual executable path. Then choose **Compilar e visualizar PDF**.
 
 If LaTeX is not installed, export the `.tex` file and compile it later in a
 configured LaTeX environment.
+
+## Compare Classic And Smooth
+
+Use the files in `examples/comparison/` as a reproducible comparison:
+
+- `original.jpg`;
+- `classic_output.tex`;
+- `classic_output.pdf`;
+- `smooth_output.tex`;
+- `smooth_output.pdf`;
+- `notes.md`.
+
+`Classic` is the rollback mode. `Smooth` should reduce fragmented strokes and
+angular paths, but it can still lose very faint details if parameters are too
+aggressive.

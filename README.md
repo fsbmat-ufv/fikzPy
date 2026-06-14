@@ -47,12 +47,13 @@ fikzpy
 ## Basic Workflow
 
 1. Open an image with **Arquivo > Abrir imagem**.
-2. Choose the vectorization mode. `Line art` is best for black-and-white
-   drawings with internal strokes; `Contornos` keeps the classic Canny contour
-   pipeline.
+2. Choose the vectorization mode. `Classic` preserves the stable line-art
+   backend, `Smooth` enables the experimental cleanup/smoothing backend, and
+   `Contornos` keeps the Canny contour pipeline.
 3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
    width, line color, and Bezier usage in the parameter panel. In `Contornos`
-   mode, the Canny thresholds are also used.
+   mode, the Canny thresholds are also used. In `Smooth` mode, Bezier output is
+   enabled automatically.
 4. Review the generated TikZ code on the right.
 5. Toggle the preview between the original image, contour overlay, and
    reconstructed drawing.
@@ -119,7 +120,13 @@ No code was copied from these projects.
 ## Vectorization Notes
 
 Raster images need a raster-to-vector step before TikZ can be generated. For
-line drawings, fikzPy now uses a default stroke-tracing backend:
+line drawings, fikzPy provides two stroke-tracing modes:
+
+- `Classic`: stable line-art tracing, kept as the rollback path.
+- `Smooth`: experimental preprocessing, conservative contour merging, path
+  smoothing, and Bezier generation.
+
+The line-art backend follows this general sequence:
 
 1. threshold dark ink;
 2. skeletonize strokes;
@@ -132,6 +139,18 @@ line drawings, fikzPy now uses a default stroke-tracing backend:
 existing SVG paths to TikZ. It does not by itself solve JPEG/PNG recognition, so
 it should be paired with an SVG vectorizer such as Inkscape Trace Bitmap or
 potrace.
+
+## Comparison Example
+
+The folder `examples/comparison/` contains a reproducible before/after sample:
+
+- `original.jpg`;
+- `classic_output.tex` and `classic_output.pdf`;
+- `smooth_output.tex` and `smooth_output.pdf`;
+- `notes.md` with path and point counts.
+
+To return to the previous behavior in the GUI, select `Classic` in the mode
+combo box.
 
 ## Roadmap
 

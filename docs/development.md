@@ -7,8 +7,13 @@ fikzPy is intentionally modular:
 - `fikzpy.core.image_processor` handles image loading, grayscale conversion,
   smoothing, edge detection, overlays, and reconstruction previews.
 - `fikzpy.core.contour_detector` detects and simplifies contours.
+- `fikzpy.core.contour_cleaning` filters tiny paths and approximate duplicates.
+- `fikzpy.core.contour_merging` conservatively joins nearby open strokes.
+- `fikzpy.core.contour_smoothing` smooths traced path coordinates.
+- `fikzpy.core.preprocessing` applies optional denoising and morphology.
 - `fikzpy.core.stroke_tracer` extracts ink masks, skeletonizes line art, and
   traces open strokes for drawings with internal details.
+- `fikzpy.core.primitive_detection` contains hooks for semantic TikZ shapes.
 - `fikzpy.core.bezier_fit` converts simplified polylines into cubic Bezier
   segments when requested.
 - `fikzpy.core.tikz_generator` maps image coordinates to TikZ coordinates and
@@ -39,10 +44,19 @@ python scripts/build_exe.py
 
 ## Vectorization Backends
 
-The default backend is `line_art`, which is intended for black-and-white
-drawings, sketches, diagrams, and scanned line art. It thresholds dark ink,
-skeletonizes strokes, smooths pixel stair-stepping, traces open paths, and then
-emits TikZ.
+`Classic` preserves the stable line-art behavior. The legacy internal name
+`line_art` is still accepted as an alias for `classic`.
+
+`Smooth` is experimental and intentionally modular:
+
+- `preprocessing.py` applies optional bilateral/gaussian filtering and mask
+  morphology.
+- `contour_cleaning.py` filters tiny paths and can remove approximate
+  duplicates.
+- `contour_merging.py` conservatively joins nearby open strokes when endpoints
+  and directions agree.
+- `contour_smoothing.py` smooths path coordinates before TikZ generation.
+- `primitive_detection.py` contains hooks for future semantic TikZ primitives.
 
 The `contours` backend keeps the first MVP approach based on Canny edges and
 OpenCV contours. It is useful for simple closed shapes, but it is usually less
@@ -55,3 +69,11 @@ Future optional backends can include:
 - `svg2tikz` for SVG-to-TikZ conversion after the raster image has already been
   vectorized.
 - A dedicated curve-fitting pass for fewer but smoother Bezier paths.
+
+## Rollback Strategy
+
+The GUI exposes `Classic`, `Smooth`, and `Contornos` in the existing mode combo
+box. Select `Classic` to return to the pre-smooth vectorization behavior.
+
+The Git branch `improve-vectorization-v1` keeps the experimental work isolated
+from `master`, and each feature is committed separately for easy rollback.
