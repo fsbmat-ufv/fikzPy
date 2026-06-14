@@ -87,7 +87,7 @@ def compile_latex_document(
     timeout: int = 60,
 ) -> LatexCompileResult:
     """Compile a .tex file and return process output."""
-    tex_file = Path(tex_path)
+    tex_file = Path(tex_path).resolve()
     if not tex_file.exists():
         raise FileNotFoundError(f"TeX file not found: {tex_file}")
 
