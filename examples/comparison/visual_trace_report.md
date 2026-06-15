@@ -7,8 +7,8 @@ Inputs:
 
 | Input | Mode | TeX | PDF | SHA-256 | Size bytes | Paths | SVG bytes | TikZ bytes | svg2tikz |
 | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| `tests/25.jpg` | `visual` | `examples/comparison/visual_dinosaur_output.tex` | `examples/comparison/visual_dinosaur_output.pdf` | `98c1ffdb05339a9b4642a2923d9dced90c89e5ef63487db0df55f879a683384c` | 39037 | 89 | 30386 | 38906 | True |
-| `tests/Cara.png` | `visual` | `examples/comparison/visual_cara_output.tex` | `examples/comparison/visual_cara_output.pdf` | `27fd8939ad7fe31fe79e8c2ebb57dc7772fba88cbb2e97e4b602fa6d58c056ab` | 17280 | 55 | 11644 | 17149 | True |
+| `tests/25.jpg` | `visual` | `examples/comparison/visual_dinosaur_output.tex` | `examples/comparison/visual_dinosaur_output.pdf` | `e4ad22f88e7bc512ddd0fc670389ca933aaaa060efce309b17e960a17056636b` | 38242 | 89 | 29877 | 38111 | True |
+| `tests/Cara.png` | `visual` | `examples/comparison/visual_cara_output.tex` | `examples/comparison/visual_cara_output.pdf` | `0fbed29719be0b97b7eb779367c16589886f2fbbf60d8fc3ae8dcebaf24cfdb4` | 16826 | 55 | 11363 | 16695 | True |
 
 ## Notes
 

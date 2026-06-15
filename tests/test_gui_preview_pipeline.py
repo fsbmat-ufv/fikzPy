@@ -15,7 +15,7 @@ from fikzpy.gui.main_window import MainWindow
 def test_preview_compile_loads_pdf_matching_fresh_tex(monkeypatch, tmp_path: Path) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
-    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findData("vector"))
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findData("visual"))
     window.code_editor.set_code("\\begin{tikzpicture}\n  % FIKZPY VECTOR MODE\n\\end{tikzpicture}")
 
     opened: list[QUrl] = []
@@ -34,7 +34,7 @@ def test_preview_compile_loads_pdf_matching_fresh_tex(monkeypatch, tmp_path: Pat
     window.compile_latex()
 
     assert compiled_tex
-    assert "fikzpy_vector_" in compiled_tex[0].name
+    assert "fikzpy_visual_" in compiled_tex[0].name
     assert opened
     assert Path(opened[0].toLocalFile()) == compiled_tex[0].with_suffix(".pdf")
 
@@ -46,9 +46,21 @@ def test_preview_temp_names_are_mode_specific() -> None:
 
     window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findData("classic"))
     classic_path = window._write_temporary_tex()
-    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findData("vector"))
-    vector_path = window._write_temporary_tex()
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findData("visual"))
+    visual_path = window._write_temporary_tex()
 
     assert "fikzpy_classic_" in classic_path.name
-    assert "fikzpy_vector_" in vector_path.name
-    assert classic_path != vector_path
+    assert "fikzpy_visual_" in visual_path.name
+    assert classic_path != visual_path
+
+
+def test_gui_exposes_only_primary_modes() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    modes = [
+        window.vectorization_mode_combo.itemData(index)
+        for index in range(window.vectorization_mode_combo.count())
+    ]
+
+    assert modes == ["classic", "visual", "contours"]

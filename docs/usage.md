@@ -19,12 +19,8 @@ python -m fikzpy.main
 1. Choose **Arquivo > Abrir imagem**.
 2. Choose the vectorization mode:
    - `Classic` for the stable line-art behavior;
-   - `Vector` for internal vector objects and Bezier-oriented paths;
-   - `Fidelidade` for a detail-preserving variant of `Vector`;
    - `Visual` for maximum visual fidelity with filled TikZ paths generated
      through SVG-style tracing and `svg2tikz`;
-   - `Smooth` for experimental filtering, endpoint merging, smoothing, and
-     Bezier paths;
    - `Contornos` for the classic Canny contour pipeline.
 3. Adjust the parameters:
    - ink threshold for faint strokes;
@@ -36,6 +32,9 @@ python -m fikzpy.main
    - line width;
    - line color;
    - Bezier mode.
+
+   In `Visual` mode, ink threshold, stroke smoothing, smoothing, and
+   simplification affect the filled-path trace and the generated PDF.
 4. Click **Gerar TikZ** if automatic regeneration is not enough.
 5. Use **Visualizacao** to compare the original, overlay, and reconstructed
    drawing.
@@ -62,8 +61,7 @@ Use the files in `examples/comparison/` as a reproducible comparison:
 - `visual_cara_output.tex`;
 - `notes.md`.
 
-`Classic` is the rollback mode. `Smooth` should reduce fragmented strokes and
-angular paths, but it can still lose very faint details if parameters are too
-aggressive. `Visual` should be used when fidelity matters more than compact,
-hand-editable TikZ; it traces the visible ink as filled paths rather than as
-stroke centerlines.
+`Classic` is the rollback mode. `Visual` should be used when fidelity matters
+more than compact, hand-editable TikZ; it traces the visible ink as filled paths
+rather than as stroke centerlines. `Contornos` is useful for images where Canny
+edge contours are a better fit.

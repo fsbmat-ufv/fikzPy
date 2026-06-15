@@ -8,6 +8,7 @@ import numpy as np
 
 from fikzpy.core.diagnostics import log_event
 from fikzpy.core.image_processor import ProcessingResult, ProcessingSettings, process_image
+from fikzpy.core.image_processor import visual_settings_from_processing
 from fikzpy.core.tikz_generator import TikzOptions, generate_tikz_picture
 from fikzpy.core.vector_exporter import VectorObjectStats, count_vector_objects
 from fikzpy.core.vector_exporter import generate_tikz_from_vector_objects
@@ -47,7 +48,12 @@ def build_tikz_from_image(
 
     if effective_mode == "visual":
         log_event("Vectorization", "pipeline=visual_svg_trace")
-        visual_result = generate_visual_tikz_picture(contours, processing_result.original_bgr.shape, options)
+        visual_result = generate_visual_tikz_picture(
+            contours,
+            processing_result.original_bgr.shape,
+            options,
+            visual_settings_from_processing(settings),
+        )
         log_event("Visual", f"paths={visual_result.stats.paths}")
         log_event("Visual", f"svg_bytes={visual_result.stats.svg_bytes}")
         log_event("Visual", f"tikz_bytes={visual_result.stats.tikz_bytes}")

@@ -47,15 +47,15 @@ fikzpy
 ## Basic Workflow
 
 1. Open an image with **Arquivo > Abrir imagem**.
-2. Choose the vectorization mode. `Classic` preserves the stable line-art
-   backend, `Vector` and `Fidelidade` generate editable Bezier-oriented paths,
-   `Visual` favors visual similarity with filled TikZ paths, `Smooth` enables
-   the experimental cleanup/smoothing backend, and `Contornos` keeps the Canny
-   contour pipeline.
+2. Choose the vectorization mode. The GUI exposes three primary modes:
+   `Classic` for stable editable strokes, `Visual` for maximum visual
+   similarity with filled TikZ paths, and `Contornos` for the Canny contour
+   pipeline.
 3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
-   width, line color, and Bezier usage in the parameter panel. In `Contornos`
-   mode, the Canny thresholds are also used. In `Smooth` mode, Bezier output is
-   enabled automatically.
+   width, line color, and Bezier usage in the parameter panel. In `Visual`
+   mode, ink threshold, stroke smoothing, smoothing, and simplification affect
+   the filled-path trace. In `Contornos` mode, the Canny thresholds are also
+   used.
 4. Review the generated TikZ code on the right.
 5. Toggle the preview between the original image, contour overlay, and
    reconstructed drawing.
@@ -121,19 +121,18 @@ No code was copied from these projects.
 
 ## Vectorization Notes
 
-Raster images need a raster-to-vector step before TikZ can be generated. For
-line drawings, fikzPy provides complementary tracing modes:
+Raster images need a raster-to-vector step before TikZ can be generated. The
+GUI exposes the three primary tracing modes:
 
 - `Classic`: stable line-art tracing, kept as the rollback path.
-- `Vector`: centerline stroke tracing with internal vector objects and cubic
-  Bezier fitting.
-- `Fidelidade`: a less aggressive `Vector` variant that preserves more small
-  details at the cost of larger TikZ.
 - `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
   This is the highest visual-fidelity mode, but the output is less compact and
   less hand-editable than centerline `\draw` paths.
-- `Smooth`: experimental preprocessing, conservative contour merging, path
-  smoothing, and Bezier generation.
+- `Contornos`: classic Canny/contour tracing for geometric or filled images.
+
+The codebase also keeps experimental centerline modes such as `Vector`,
+`Fidelidade`, and `Smooth` for tests and future work, but they are no longer
+shown in the main GUI selector.
 
 The centerline backends follow this general sequence:
 
@@ -153,8 +152,8 @@ The `Visual` backend follows a different sequence:
 5. convert the SVG path to TikZ with `svg2tikz`;
 6. emit filled `\path[fill=black, even odd rule]` commands.
 
-Use `Visual` when the PDF must look close to the source image. Use `Vector` or
-`Fidelidade` when the priority is editable mathematical strokes.
+Use `Visual` when the PDF must look close to the source image. Use `Classic`
+when the priority is editable mathematical strokes.
 
 ## Comparison Example
 
