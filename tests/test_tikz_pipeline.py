@@ -68,7 +68,7 @@ def test_vector_pipeline_failure_is_not_silently_classic(monkeypatch: pytest.Mon
     def broken_vector_pipeline(*args, **kwargs):
         raise RuntimeError("vector pipeline failed")
 
-    monkeypatch.setattr("fikzpy.core.tikz_pipeline.contours_to_vector_objects", broken_vector_pipeline)
+    monkeypatch.setattr("fikzpy.core.tikz_pipeline.fit_contours_to_vector_objects", broken_vector_pipeline)
 
     with pytest.raises(RuntimeError, match="vector pipeline failed"):
         build_tikz_from_image(

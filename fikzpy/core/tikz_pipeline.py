@@ -12,7 +12,7 @@ from fikzpy.core.tikz_generator import TikzOptions, generate_tikz_picture
 from fikzpy.core.vector_exporter import VectorObjectStats, count_vector_objects
 from fikzpy.core.vector_exporter import generate_tikz_from_vector_objects
 from fikzpy.core.vector_objects import VectorObject
-from fikzpy.core.vector_pipeline import contours_to_vector_objects
+from fikzpy.core.vector_pipeline import fit_contours_to_vector_objects
 from fikzpy.core.vectorization_config import config_for_mode
 
 
@@ -45,8 +45,10 @@ def build_tikz_from_image(
 
     if effective_mode == "vector":
         log_event("Vectorization", "pipeline=contours_to_vector_objects")
-        vector_objects = contours_to_vector_objects(contours, processing_result.original_bgr.shape, options)
+        fit_result = fit_contours_to_vector_objects(contours, processing_result.original_bgr.shape, options)
+        vector_objects = fit_result.objects
         stats = count_vector_objects(vector_objects)
+        _log_bezier_fit_stats(fit_result.input_points, fit_result.simplified_points, stats, fit_result.geometric_reduction)
         _log_vector_stats(stats)
         tikz_code = generate_tikz_from_vector_objects(vector_objects, options=options, diagnostic_marker=True)
         return TikzBuildResult(
@@ -79,3 +81,18 @@ def _log_vector_stats(stats: VectorObjectStats) -> None:
     log_event("Vectorization", f"circles={stats.circles}")
     log_event("Vectorization", f"ellipses={stats.ellipses}")
     log_event("Vectorization", f"rectangles={stats.rectangles}")
+
+
+def _log_bezier_fit_stats(
+    input_points: int,
+    simplified_points: int,
+    stats: VectorObjectStats,
+    reduction: float,
+) -> None:
+    log_event("BezierFit", f"input_points={input_points}")
+    log_event("BezierFit", f"simplified_points={simplified_points}")
+    log_event("BezierFit", f"lines={stats.lines}")
+    log_event("BezierFit", f"beziers={stats.bezier_curves}")
+    log_event("BezierFit", f"polylines={stats.polylines}")
+    log_event("BezierFit", f"geometric_commands={stats.total}")
+    log_event("BezierFit", f"geometric_reduction={reduction:.1f}%")

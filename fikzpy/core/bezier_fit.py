@@ -112,6 +112,22 @@ def fit_cubic_beziers(
     return tuple(fitted)
 
 
+def simplify_points_for_bezier_fit(
+    points: Sequence[Point] | np.ndarray,
+    tolerance: float,
+    *,
+    closed: bool = False,
+) -> np.ndarray:
+    """Conservatively simplify points before fitting Bezier curves."""
+    pts = _as_points_array(points)
+    if closed and not np.allclose(pts[0], pts[-1]):
+        pts = np.vstack([pts, pts[0]])
+    pts = _remove_repeated_points(pts)
+    if tolerance <= 0 or len(pts) <= 2:
+        return pts
+    return _douglas_peucker(pts, float(tolerance), closed=False)
+
+
 def evaluate_cubic_bezier(curve: BezierCurve, parameters: np.ndarray) -> np.ndarray:
     """Evaluate a Bezier curve at one or more parameter values."""
     u = np.asarray(parameters, dtype=np.float64)
