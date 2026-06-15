@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         self.vectorization_mode_combo.addItem("Classic", "classic")
         self.vectorization_mode_combo.addItem("Vector", "vector")
         self.vectorization_mode_combo.addItem("Fidelidade", "fidelity")
+        self.vectorization_mode_combo.addItem("Visual", "visual")
         self.vectorization_mode_combo.addItem("Smooth", "smooth")
         self.vectorization_mode_combo.addItem("Contornos", "contours")
         form.addRow("Modo", self.vectorization_mode_combo)
@@ -297,7 +298,7 @@ class MainWindow(QMainWindow):
             line_width=self.line_width_spin.value(),
             line_color=self.line_color_edit.text(),
             use_bezier=self.bezier_check.isChecked()
-            or self.vectorization_mode_combo.currentData() in {"smooth", "vector", "fidelity"},
+            or self.vectorization_mode_combo.currentData() in {"smooth", "vector", "fidelity", "visual"},
             width_units=self.width_units_spin.value(),
         )
 

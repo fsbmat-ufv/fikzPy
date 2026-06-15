@@ -14,6 +14,7 @@ from fikzpy.core.vector_exporter import generate_tikz_from_vector_objects
 from fikzpy.core.vector_objects import VectorObject
 from fikzpy.core.vector_pipeline import fit_contours_to_vector_objects
 from fikzpy.core.vectorization_config import config_for_mode
+from fikzpy.core.visual_pipeline import VisualTikzStats, generate_visual_tikz_picture
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class TikzBuildResult:
     tikz_code: str
     vector_objects: tuple[VectorObject, ...] = ()
     vector_stats: VectorObjectStats = VectorObjectStats()
+    visual_stats: VisualTikzStats = VisualTikzStats()
 
 
 def build_tikz_from_image(
@@ -42,6 +44,24 @@ def build_tikz_from_image(
     processing_result = process_image(image, settings)
     contours = processing_result.contours
     log_event("Vectorization", f"contours={len(contours)}")
+
+    if effective_mode == "visual":
+        log_event("Vectorization", "pipeline=visual_svg_trace")
+        visual_result = generate_visual_tikz_picture(contours, processing_result.original_bgr.shape, options)
+        log_event("Visual", f"paths={visual_result.stats.paths}")
+        log_event("Visual", f"svg_bytes={visual_result.stats.svg_bytes}")
+        log_event("Visual", f"tikz_bytes={visual_result.stats.tikz_bytes}")
+        log_event("Visual", f"used_svg2tikz={visual_result.stats.used_svg2tikz}")
+        stats = VectorObjectStats()
+        _log_vector_stats(stats)
+        return TikzBuildResult(
+            requested_mode=requested_mode,
+            effective_mode=effective_mode,
+            processing_result=processing_result,
+            tikz_code=visual_result.tikz_picture,
+            vector_stats=stats,
+            visual_stats=visual_result.stats,
+        )
 
     if effective_mode in {"vector", "fidelity"}:
         log_event("Vectorization", "pipeline=contours_to_vector_objects")

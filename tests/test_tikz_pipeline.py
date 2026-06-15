@@ -63,6 +63,20 @@ def test_fidelity_mode_preserves_more_vector_detail_than_vector_mode() -> None:
     assert len(fidelity.tikz_code) >= len(vector.tikz_code)
 
 
+def test_visual_mode_uses_filled_svg_trace_pipeline() -> None:
+    result = build_tikz_from_image(
+        _line_art_image(),
+        ProcessingSettings(vectorization_mode="visual"),
+        TikzOptions(use_bezier=True),
+    )
+
+    assert result.effective_mode == "visual"
+    assert result.vector_objects == ()
+    assert result.visual_stats.paths > 0
+    assert "\\path[fill=black" in result.tikz_code
+    assert "cycle" in result.tikz_code
+
+
 def test_classic_and_vector_tex_outputs_are_different(tmp_path: Path) -> None:
     image = _line_art_image()
     classic = build_tikz_from_image(

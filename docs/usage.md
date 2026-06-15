@@ -19,6 +19,10 @@ python -m fikzpy.main
 1. Choose **Arquivo > Abrir imagem**.
 2. Choose the vectorization mode:
    - `Classic` for the stable line-art behavior;
+   - `Vector` for internal vector objects and Bezier-oriented paths;
+   - `Fidelidade` for a detail-preserving variant of `Vector`;
+   - `Visual` for maximum visual fidelity with filled TikZ paths generated
+     through SVG-style tracing and `svg2tikz`;
    - `Smooth` for experimental filtering, endpoint merging, smoothing, and
      Bezier paths;
    - `Contornos` for the classic Canny contour pipeline.
@@ -45,7 +49,7 @@ or select a manual executable path. Then choose **Compilar e visualizar PDF**.
 If LaTeX is not installed, export the `.tex` file and compile it later in a
 configured LaTeX environment.
 
-## Compare Classic And Smooth
+## Compare Modes
 
 Use the files in `examples/comparison/` as a reproducible comparison:
 
@@ -54,8 +58,12 @@ Use the files in `examples/comparison/` as a reproducible comparison:
 - `classic_output.pdf`;
 - `smooth_output.tex`;
 - `smooth_output.pdf`;
+- `visual_dinosaur_output.tex`;
+- `visual_cara_output.tex`;
 - `notes.md`.
 
 `Classic` is the rollback mode. `Smooth` should reduce fragmented strokes and
 angular paths, but it can still lose very faint details if parameters are too
-aggressive.
+aggressive. `Visual` should be used when fidelity matters more than compact,
+hand-editable TikZ; it traces the visible ink as filled paths rather than as
+stroke centerlines.

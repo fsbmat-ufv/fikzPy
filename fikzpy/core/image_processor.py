@@ -14,6 +14,7 @@ from fikzpy.core.contour_merging import merge_nearby_contours
 from fikzpy.core.contour_smoothing import smooth_contours
 from fikzpy.core.stroke_tracer import StrokeTracingSettings, trace_line_art_strokes
 from fikzpy.core.vectorization_config import config_for_mode
+from fikzpy.core.visual_pipeline import VisualTracingSettings, trace_visual_contours
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,15 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
+    elif vector_config.mode == "visual":
+        visual_result = trace_visual_contours(
+            image,
+            VisualTracingSettings(dark_threshold=settings.line_art_threshold),
+        )
+        contours = visual_result.contours
+        ink_mask = visual_result.ink_mask
+        skeleton = visual_result.ink_mask
+        edges = visual_result.ink_mask
     elif vector_config.mode in {"classic", "smooth", "vector", "fidelity"}:
         is_vector_like = vector_config.mode in {"vector", "fidelity"}
         is_fidelity = vector_config.mode == "fidelity"

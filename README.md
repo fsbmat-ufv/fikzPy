@@ -48,8 +48,10 @@ fikzpy
 
 1. Open an image with **Arquivo > Abrir imagem**.
 2. Choose the vectorization mode. `Classic` preserves the stable line-art
-   backend, `Smooth` enables the experimental cleanup/smoothing backend, and
-   `Contornos` keeps the Canny contour pipeline.
+   backend, `Vector` and `Fidelidade` generate editable Bezier-oriented paths,
+   `Visual` favors visual similarity with filled TikZ paths, `Smooth` enables
+   the experimental cleanup/smoothing backend, and `Contornos` keeps the Canny
+   contour pipeline.
 3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
    width, line color, and Bezier usage in the parameter panel. In `Contornos`
    mode, the Canny thresholds are also used. In `Smooth` mode, Bezier output is
@@ -120,13 +122,20 @@ No code was copied from these projects.
 ## Vectorization Notes
 
 Raster images need a raster-to-vector step before TikZ can be generated. For
-line drawings, fikzPy provides two stroke-tracing modes:
+line drawings, fikzPy provides complementary tracing modes:
 
 - `Classic`: stable line-art tracing, kept as the rollback path.
+- `Vector`: centerline stroke tracing with internal vector objects and cubic
+  Bezier fitting.
+- `Fidelidade`: a less aggressive `Vector` variant that preserves more small
+  details at the cost of larger TikZ.
+- `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
+  This is the highest visual-fidelity mode, but the output is less compact and
+  less hand-editable than centerline `\draw` paths.
 - `Smooth`: experimental preprocessing, conservative contour merging, path
   smoothing, and Bezier generation.
 
-The line-art backend follows this general sequence:
+The centerline backends follow this general sequence:
 
 1. threshold dark ink;
 2. skeletonize strokes;
@@ -135,10 +144,17 @@ The line-art backend follows this general sequence:
 5. simplify paths;
 6. emit editable TikZ.
 
-`svg2tikz` is a strong candidate for a future optional backend, but it converts
-existing SVG paths to TikZ. It does not by itself solve JPEG/PNG recognition, so
-it should be paired with an SVG vectorizer such as Inkscape Trace Bitmap or
-potrace.
+The `Visual` backend follows a different sequence:
+
+1. enhance local contrast and threshold likely black ink;
+2. ignore strongly chromatic diagnostic annotations when possible;
+3. trace the outer boundary of the ink shapes;
+4. fit SVG-style cubic paths;
+5. convert the SVG path to TikZ with `svg2tikz`;
+6. emit filled `\path[fill=black, even odd rule]` commands.
+
+Use `Visual` when the PDF must look close to the source image. Use `Vector` or
+`Fidelidade` when the priority is editable mathematical strokes.
 
 ## Comparison Example
 
@@ -147,6 +163,8 @@ The folder `examples/comparison/` contains a reproducible before/after sample:
 - `original.jpg`;
 - `classic_output.tex` and `classic_output.pdf`;
 - `smooth_output.tex` and `smooth_output.pdf`;
+- `visual_dinosaur_output.tex`;
+- `visual_cara_output.tex`;
 - `notes.md` with path and point counts.
 
 To return to the previous behavior in the GUI, select `Classic` in the mode
