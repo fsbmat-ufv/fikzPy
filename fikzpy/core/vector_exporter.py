@@ -36,7 +36,6 @@ def generate_tikz_from_vector_objects(
 ) -> str:
     """Generate a tikzpicture environment from internal vector objects."""
     options = options or TikzOptions()
-    flattened = flatten_vector_objects(tuple(objects))
     lines = [
         f"\\begin{{tikzpicture}}[scale={_fmt_number(options.tikz_scale, 3)}]",
     ]
@@ -45,10 +44,10 @@ def generate_tikz_from_vector_objects(
 
     lines.append("  \\begin{scope}[line cap=round, line join=round]")
 
-    for item in flattened:
+    for item in tuple(objects):
         command = _object_to_tikz(item, options)
         if command:
-            lines.append(command)
+            lines.extend(command.splitlines())
 
     lines.append("  \\end{scope}")
     if diagnostic_marker:
@@ -105,6 +104,8 @@ def flatten_vector_objects(objects: tuple[VectorObject, ...]) -> tuple[Line | Po
 def _object_to_tikz(item, options: TikzOptions) -> str:
     style = _draw_style(options)
     precision = options.precision
+    if isinstance(item, PathGroup):
+        return _path_group_to_tikz(item, options)
     if isinstance(item, Line):
         return f"  \\draw[{style}] {_format_point(item.start, precision)} -- {_format_point(item.end, precision)};"
     if isinstance(item, Polyline):
@@ -138,6 +139,73 @@ def _object_to_tikz(item, options: TikzOptions) -> str:
         name = f" ({item.name})" if item.name else ""
         return f"  \\node{name} at {_format_point(item.position, precision)} {{{item.text}}};"
     return ""
+
+
+def _path_group_to_tikz(group: PathGroup, options: TikzOptions) -> str:
+    """Serialize connected line and Bezier primitives as one TikZ path."""
+    items = group.flatten()
+    if not items:
+        return ""
+    if any(not isinstance(item, (Line, Polyline, BezierCurve)) for item in items):
+        return "\n".join(filter(None, (_object_to_tikz(item, options) for item in items)))
+
+    path = _connected_path_parts(items, options.precision)
+    if path is None:
+        return "\n".join(filter(None, (_object_to_tikz(item, options) for item in items)))
+
+    style = _draw_style(options)
+    lines = [f"  \\draw[{style}] {path[0]}"]
+    lines.extend(f"    {part}" for part in path[1:-1])
+    lines.append(f"    {path[-1]};")
+    return "\n".join(lines)
+
+
+def _connected_path_parts(
+    items: tuple[Line | Polyline | BezierCurve | Circle | Ellipse | Rectangle | Arc | Node, ...],
+    precision: int,
+) -> list[str] | None:
+    first = items[0]
+    current = _primitive_start(first)
+    if current is None:
+        return None
+
+    parts = [_format_point(current, precision)]
+    for item in items:
+        start = _primitive_start(item)
+        if start is None or current.distance_to(start) > 1e-6:
+            return None
+
+        if isinstance(item, Line):
+            parts.append(f"-- {_format_point(item.end, precision)}")
+            current = item.end
+        elif isinstance(item, Polyline):
+            for point in item.points[1:]:
+                parts.append(f"-- {_format_point(point, precision)}")
+            if item.closed:
+                parts.append("-- cycle")
+                current = item.points[0]
+            else:
+                current = item.points[-1]
+        elif isinstance(item, BezierCurve):
+            parts.append(
+                f".. controls {_format_point(item.control1, precision)} and {_format_point(item.control2, precision)}"
+                f" .. {_format_point(item.end, precision)}"
+            )
+            current = item.end
+        else:
+            return None
+
+    return parts
+
+
+def _primitive_start(item: Line | Polyline | BezierCurve | Circle | Ellipse | Rectangle | Arc | Node) -> Point | None:
+    if isinstance(item, Line):
+        return item.start
+    if isinstance(item, Polyline):
+        return item.points[0]
+    if isinstance(item, BezierCurve):
+        return item.start
+    return None
 
 
 def _draw_style(options: TikzOptions) -> str:

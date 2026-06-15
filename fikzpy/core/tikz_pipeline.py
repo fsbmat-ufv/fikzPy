@@ -50,7 +50,7 @@ def build_tikz_from_image(
         stats = count_vector_objects(vector_objects)
         _log_bezier_fit_stats(fit_result.input_points, fit_result.simplified_points, stats, fit_result.geometric_reduction)
         _log_vector_stats(stats)
-        tikz_code = generate_tikz_from_vector_objects(vector_objects, options=options, diagnostic_marker=True)
+        tikz_code = generate_tikz_from_vector_objects(vector_objects, options=options, diagnostic_marker=False)
         return TikzBuildResult(
             requested_mode=requested_mode,
             effective_mode=effective_mode,

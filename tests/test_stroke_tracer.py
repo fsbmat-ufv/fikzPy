@@ -52,6 +52,22 @@ def test_faint_stroke_recovery_keeps_flat_background_clean() -> None:
     assert np.count_nonzero(mask) == 0
 
 
+def test_blackhat_recovery_can_keep_low_contrast_strokes() -> None:
+    gray = np.full((60, 80), 255, dtype=np.uint8)
+    cv2.line(gray, (10, 30), (70, 30), 244, 2)
+
+    mask = extract_ink_mask(
+        gray,
+        StrokeTracingSettings(
+            dark_threshold=215,
+            recover_blackhat_strokes=True,
+            blackhat_threshold=10,
+        ),
+    )
+
+    assert mask[30, 40] == 255
+
+
 def test_trace_strokes_from_skeleton_returns_open_path() -> None:
     skeleton = np.zeros((30, 30), dtype=np.uint8)
     cv2.line(skeleton, (5, 15), (25, 15), 255, 1)
@@ -61,6 +77,31 @@ def test_trace_strokes_from_skeleton_returns_open_path() -> None:
     assert len(strokes) == 1
     assert not strokes[0].closed
     assert len(strokes[0].points) >= 2
+
+
+def test_trace_strokes_can_snap_branch_endpoints_to_junction_center() -> None:
+    skeleton = np.zeros((20, 20), dtype=np.uint8)
+    for y, x in [(9, 9), (9, 10), (10, 9), (10, 10)]:
+        skeleton[y, x] = 255
+    cv2.line(skeleton, (10, 2), (10, 9), 255, 1)
+    cv2.line(skeleton, (10, 10), (10, 17), 255, 1)
+    cv2.line(skeleton, (2, 10), (9, 10), 255, 1)
+    cv2.line(skeleton, (10, 10), (17, 17), 255, 1)
+
+    strokes = trace_strokes_from_skeleton(
+        skeleton,
+        min_path_length=3,
+        smooth_iterations=0,
+        simplify_epsilon=0.0,
+        snap_junction_endpoints=True,
+    )
+    endpoint_counts: dict[tuple[float, float], int] = {}
+    for stroke in strokes:
+        for point in (stroke.points[0], stroke.points[-1]):
+            key = tuple(np.round(point, 2))
+            endpoint_counts[key] = endpoint_counts.get(key, 0) + 1
+
+    assert max(endpoint_counts.values()) >= 3
 
 
 def test_process_image_line_art_mode_finds_internal_strokes() -> None:

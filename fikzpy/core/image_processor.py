@@ -136,14 +136,19 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_perimeter=settings.min_contour_perimeter,
         )
     elif vector_config.mode in {"classic", "smooth", "vector"}:
+        effective_min_path_length = (
+            min(settings.min_path_length, 2) if vector_config.mode == "vector" else settings.min_path_length
+        )
         contours, ink_mask, skeleton = trace_line_art_strokes(
             gray,
             simplify_epsilon=settings.simplify_epsilon,
             settings=StrokeTracingSettings(
                 dark_threshold=settings.line_art_threshold,
-                min_path_length=settings.min_path_length,
+                min_path_length=effective_min_path_length,
                 smooth_iterations=settings.stroke_smoothing,
                 recover_faint_strokes=vector_config.mode == "vector",
+                snap_junction_endpoints=vector_config.mode == "vector",
+                recover_blackhat_strokes=vector_config.mode == "vector",
             ),
             preprocessing=vector_config.preprocessing if vector_config.mode == "smooth" else None,
         )

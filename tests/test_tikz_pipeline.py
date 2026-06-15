@@ -41,7 +41,8 @@ def test_vector_mode_uses_vector_object_pipeline() -> None:
     assert result.effective_mode == "vector"
     assert result.vector_objects
     assert result.vector_stats.total > 0
-    assert "% FIKZPY VECTOR MODE" in result.tikz_code
+    assert "% FIKZPY VECTOR MODE" not in result.tikz_code
+    assert ".. controls" in result.tikz_code
 
 
 def test_classic_and_vector_tex_outputs_are_different(tmp_path: Path) -> None:

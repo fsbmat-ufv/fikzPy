@@ -53,7 +53,11 @@ def fit_contours_to_vector_objects(
         input_points += len(points)
         simplified = _simplify_points_for_contour(points, contour)
         simplified_points += len(simplified)
-        objects.extend(_points_to_fitted_objects(simplified, closed=contour.closed))
+        fitted = _points_to_fitted_objects(simplified, closed=contour.closed)
+        if len(fitted) == 1:
+            objects.append(fitted[0])
+        elif fitted:
+            objects.append(PathGroup(fitted))
     return VectorPipelineResult(tuple(objects), input_points=input_points, simplified_points=simplified_points)
 
 

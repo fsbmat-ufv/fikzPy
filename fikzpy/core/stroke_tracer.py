@@ -14,6 +14,7 @@ from fikzpy.core.vectorization_config import PreprocessingConfig
 
 
 Pixel = tuple[int, int]
+FloatPixel = tuple[float, float]
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,12 @@ class StrokeTracingSettings:
     faint_stroke_block_size: int = 31
     faint_stroke_min_delta: int = 7
     faint_stroke_max_gray: int = 246
+    snap_junction_endpoints: bool = False
+    recover_blackhat_strokes: bool = False
+    blackhat_kernel_size: int = 9
+    blackhat_threshold: int = 12
+    blackhat_min_gray: int = 80
+    blackhat_max_gray: int = 250
 
 
 def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = None) -> np.ndarray:
@@ -58,6 +65,8 @@ def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = 
 
     if settings.recover_faint_strokes:
         mask = _recover_faint_strokes(denoised, mask, settings)
+    if settings.recover_blackhat_strokes:
+        mask = _recover_blackhat_strokes(denoised, mask, settings)
 
     return _remove_small_components(mask, settings.min_component_area)
 
@@ -84,6 +93,7 @@ def trace_strokes_from_skeleton(
     simplify_epsilon: float = 0.01,
     min_path_length: int = 8,
     smooth_iterations: int = 1,
+    snap_junction_endpoints: bool = False,
 ) -> list[Contour]:
     """Trace skeleton pixels into drawable open and closed strokes."""
     pixels = _skeleton_pixels(skeleton)
@@ -91,6 +101,7 @@ def trace_strokes_from_skeleton(
         return []
 
     neighbors = {pixel: [item for item in _neighbor_pixels(pixel) if item in pixels] for pixel in pixels}
+    junction_centers = _junction_centers(neighbors) if snap_junction_endpoints else {}
     visited_edges: set[frozenset[Pixel]] = set()
     paths: list[tuple[list[Pixel], bool]] = []
 
@@ -116,7 +127,7 @@ def trace_strokes_from_skeleton(
         if len(path) < min_path_length:
             continue
 
-        points = np.array([[x, y] for y, x in path], dtype=np.float64)
+        points = _path_to_xy_points(path, junction_centers)
         points = _smooth_polyline(points, closed=closed, iterations=smooth_iterations)
         simplified = simplify_polyline(points, epsilon_ratio=simplify_epsilon, closed=closed)
         if len(simplified) < 2:
@@ -148,6 +159,7 @@ def trace_line_art_strokes(
         simplify_epsilon=simplify_epsilon,
         min_path_length=settings.min_path_length,
         smooth_iterations=settings.smooth_iterations,
+        snap_junction_endpoints=settings.snap_junction_endpoints,
     )
     return contours, ink_mask, skeleton
 
@@ -190,6 +202,25 @@ def _recover_faint_strokes(
     return cv2.bitwise_or(base_mask, faint_mask)
 
 
+def _recover_blackhat_strokes(
+    gray: np.ndarray,
+    base_mask: np.ndarray,
+    settings: StrokeTracingSettings,
+) -> np.ndarray:
+    """Recover weak dark strokes with a conservative morphological black-hat pass."""
+    kernel_size = _odd_at_least(settings.blackhat_kernel_size, 3)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
+
+    candidates = (
+        (blackhat >= int(settings.blackhat_threshold))
+        & (gray >= int(settings.blackhat_min_gray))
+        & (gray <= int(settings.blackhat_max_gray))
+    )
+    blackhat_mask = (candidates.astype(np.uint8) * 255)
+    return cv2.bitwise_or(base_mask, blackhat_mask)
+
+
 def _smooth_polyline(points: np.ndarray, *, closed: bool, iterations: int) -> np.ndarray:
     """Reduce pixel stair-stepping while preserving endpoints of open strokes."""
     pts = np.asarray(points, dtype=np.float64)
@@ -207,6 +238,53 @@ def _smooth_polyline(points: np.ndarray, *, closed: bool, iterations: int) -> np
             pts = smoothed
 
     return pts
+
+
+def _junction_centers(neighbors: dict[Pixel, list[Pixel]]) -> dict[Pixel, FloatPixel]:
+    """Return a center point for each connected cluster of skeleton junction pixels."""
+    junction_pixels = {pixel for pixel, items in neighbors.items() if len(items) >= 3}
+    centers: dict[Pixel, FloatPixel] = {}
+    visited: set[Pixel] = set()
+
+    for pixel in junction_pixels:
+        if pixel in visited:
+            continue
+        stack = [pixel]
+        component: list[Pixel] = []
+        visited.add(pixel)
+        while stack:
+            current = stack.pop()
+            component.append(current)
+            for neighbor in _neighbor_pixels(current):
+                if neighbor in junction_pixels and neighbor not in visited:
+                    visited.add(neighbor)
+                    stack.append(neighbor)
+
+        center_y = float(sum(item[0] for item in component) / len(component))
+        center_x = float(sum(item[1] for item in component) / len(component))
+        for item in component:
+            centers[item] = (center_y, center_x)
+
+    return centers
+
+
+def _path_to_xy_points(path: list[Pixel], junction_centers: dict[Pixel, FloatPixel]) -> np.ndarray:
+    """Convert a skeleton path to x/y points and snap endpoints to junction centers."""
+    points = np.array([[float(x), float(y)] for y, x in path], dtype=np.float64)
+    if len(points) == 0 or not junction_centers:
+        return points
+
+    start_center = junction_centers.get(path[0])
+    if start_center is not None:
+        center_y, center_x = start_center
+        points[0] = (center_x, center_y)
+
+    end_center = junction_centers.get(path[-1])
+    if end_center is not None:
+        center_y, center_x = end_center
+        points[-1] = (center_x, center_y)
+
+    return points
 
 
 def _zhang_suen_candidates(image: np.ndarray, step: int) -> np.ndarray:

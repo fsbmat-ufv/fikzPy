@@ -4,7 +4,7 @@ import numpy as np
 
 from fikzpy.core.contour_detector import Contour
 from fikzpy.core.tikz_generator import TikzOptions
-from fikzpy.core.vector_exporter import count_vector_objects
+from fikzpy.core.vector_exporter import count_vector_objects, flatten_vector_objects
 from fikzpy.core.vector_objects import BezierCurve, Line, Point
 from fikzpy.core.vector_pipeline import contours_to_local_bezier_objects, fit_contours_to_vector_objects
 
@@ -39,11 +39,12 @@ def test_fit_contours_to_vector_objects_preserves_bezier_endpoints() -> None:
     contour = Contour(points=np.column_stack([xs, ys]), closed=False)
 
     fitted = fit_contours_to_vector_objects([contour], (100, 100, 3), TikzOptions(width_units=10))
-    curves = [item for item in fitted.objects if isinstance(item, BezierCurve)]
+    primitives = flatten_vector_objects(fitted.objects)
+    curves = [item for item in primitives if isinstance(item, BezierCurve)]
 
     assert curves
-    assert _start_point(fitted.objects).distance_to(Point(1.0, 5.0)) < 1e-9
-    assert _end_point(fitted.objects).distance_to(Point(9.0, 5.0)) < 1e-9
+    assert _start_point(primitives).distance_to(Point(1.0, 5.0)) < 1e-9
+    assert _end_point(primitives).distance_to(Point(9.0, 5.0)) < 1e-9
 
 
 def _start_point(items):

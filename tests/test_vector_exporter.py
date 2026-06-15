@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fikzpy.core.tikz_generator import TikzOptions
 from fikzpy.core.vector_exporter import count_vector_objects, generate_tikz_from_vector_objects
-from fikzpy.core.vector_objects import BezierCurve, Circle, Line, Point, Polyline
+from fikzpy.core.vector_objects import BezierCurve, Circle, Line, PathGroup, Point, Polyline
 
 
 def test_vector_exporter_emits_bezier_controls_and_marker() -> None:
@@ -33,3 +33,23 @@ def test_count_vector_objects_counts_flat_primitives() -> None:
     assert stats.lines == 1
     assert stats.polylines == 1
     assert stats.circles == 1
+
+
+def test_vector_exporter_serializes_connected_path_group_as_one_draw() -> None:
+    group = PathGroup(
+        (
+            Line(Point(0, 0), Point(1, 0)),
+            BezierCurve(
+                start=Point(1, 0),
+                control1=Point(1.5, 0.5),
+                control2=Point(2.5, 0.5),
+                end=Point(3, 0),
+            ),
+        )
+    )
+
+    code = generate_tikz_from_vector_objects([group], options=TikzOptions())
+
+    assert code.count("\\draw") == 1
+    assert "-- (1,0)" in code
+    assert ".. controls" in code
