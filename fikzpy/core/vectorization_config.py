@@ -103,6 +103,8 @@ def config_for_mode(mode: str) -> VectorizationConfig:
     normalized = mode.strip().lower()
     if normalized in {"classic", "line_art", "line-art"}:
         return VectorizationConfig.classic()
+    if normalized == "vector":
+        return VectorizationConfig(mode="vector")
     if normalized == "smooth":
         return VectorizationConfig.smooth()
     if normalized == "contours":

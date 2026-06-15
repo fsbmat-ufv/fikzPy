@@ -30,8 +30,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from fikzpy.core.image_processor import ProcessingResult, ProcessingSettings, load_image, process_image
-from fikzpy.core.tikz_generator import TikzOptions, generate_tikz_picture, wrap_standalone_document
+from fikzpy.core.diagnostics import log_event, sha256_file
+from fikzpy.core.image_processor import ProcessingResult, ProcessingSettings, load_image
+from fikzpy.core.tikz_generator import TikzOptions, wrap_standalone_document
+from fikzpy.core.tikz_pipeline import TikzBuildResult, build_tikz_from_image
 from fikzpy.gui.code_editor import CodeEditor
 from fikzpy.gui.image_viewer import ImageViewer
 from fikzpy.templates import get_template_groups
@@ -55,9 +57,11 @@ class MainWindow(QMainWindow):
         self.image_path: Path | None = None
         self.original_image = None
         self.result: ProcessingResult | None = None
+        self.build_result: TikzBuildResult | None = None
         self.current_view_index = 0
         self.latex_engine = "pdflatex"
         self.manual_latex_path: Path | None = None
+        self.preview_counter = 0
 
         self.image_viewer = ImageViewer()
         self.code_editor = CodeEditor()
@@ -136,6 +140,7 @@ class MainWindow(QMainWindow):
 
         self.vectorization_mode_combo = QComboBox()
         self.vectorization_mode_combo.addItem("Classic", "classic")
+        self.vectorization_mode_combo.addItem("Vector", "vector")
         self.vectorization_mode_combo.addItem("Smooth", "smooth")
         self.vectorization_mode_combo.addItem("Contornos", "contours")
         form.addRow("Modo", self.vectorization_mode_combo)
@@ -290,7 +295,8 @@ class MainWindow(QMainWindow):
             tikz_scale=self.tikz_scale_spin.value(),
             line_width=self.line_width_spin.value(),
             line_color=self.line_color_edit.text(),
-            use_bezier=self.bezier_check.isChecked() or self.vectorization_mode_combo.currentData() == "smooth",
+            use_bezier=self.bezier_check.isChecked()
+            or self.vectorization_mode_combo.currentData() in {"smooth", "vector"},
             width_units=self.width_units_spin.value(),
         )
 
@@ -318,12 +324,17 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            self.result = process_image(self.original_image, self.processing_settings())
-            code = generate_tikz_picture(self.result.contours, self.result.original_bgr.shape, self.tikz_options())
-            self.code_editor.set_code(code)
+            self.build_result = build_tikz_from_image(
+                self.original_image,
+                self.processing_settings(),
+                self.tikz_options(),
+            )
+            self.result = self.build_result.processing_result
+            self.code_editor.set_code(self.build_result.tikz_code)
             self._update_view()
             self.status_label.setText(f"{len(self.result.contours)} contornos detectados")
         except Exception as exc:  # pragma: no cover - user-facing guard
+            log_event("Vectorization", f"failure={exc!r}")
             QMessageBox.critical(self, "Erro ao gerar TikZ", str(exc))
 
     def _settings_changed(self, *args) -> None:
@@ -375,6 +386,8 @@ class MainWindow(QMainWindow):
 
         output_path = Path(path)
         output_path.write_text(wrap_standalone_document(self.code_editor.code()), encoding="utf-8")
+        log_event("TikZ", f"output={output_path}")
+        log_event("TikZ", f"sha256={sha256_file(output_path)}")
         self.status_label.setText(f"Exportado: {output_path.name}")
         return output_path
 
@@ -397,22 +410,38 @@ class MainWindow(QMainWindow):
                 manual_path=self.manual_latex_path,
             )
         except Exception as exc:  # pragma: no cover - user-facing guard
+            log_event("LaTeX", f"failure={exc!r}")
             QMessageBox.critical(self, "Erro ao compilar", str(exc))
             return
 
+        log_event("LaTeX", f"command={' '.join(result.command)}")
+        log_event("LaTeX", f"returncode={result.returncode}")
+        log_event("LaTeX", f"pdf={result.pdf_path}")
         if result.returncode != 0:
             QMessageBox.warning(self, "Erro LaTeX", result.output[-3000:])
             return
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(result.pdf_path)))
+        log_event("Preview", f"loaded={result.pdf_path}")
         self.status_label.setText(f"PDF gerado: {result.pdf_path.name}")
 
     def _write_temporary_tex(self) -> Path:
         temp_dir = Path(tempfile.gettempdir()) / "fikzpy"
         temp_dir.mkdir(parents=True, exist_ok=True)
-        tex_path = temp_dir / "fikzpy_preview.tex"
+        self.preview_counter += 1
+        mode = self._current_output_mode()
+        tex_path = temp_dir / f"fikzpy_{mode}_{self.preview_counter:03d}.tex"
         tex_path.write_text(wrap_standalone_document(self.code_editor.code()), encoding="utf-8")
+        log_event("TikZ", f"output={tex_path}")
+        log_event("TikZ", f"sha256={sha256_file(tex_path)}")
+        log_event("LaTeX", f"pdf={tex_path.with_suffix('.pdf')}")
         return tex_path
+
+    def _current_output_mode(self) -> str:
+        if self.build_result is not None:
+            return self.build_result.effective_mode
+        mode = self.vectorization_mode_combo.currentData() or "classic"
+        return str(mode).lower().replace(" ", "_")
 
     def detect_latex(self, distribution: str | None = None) -> None:
         try:

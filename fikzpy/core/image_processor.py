@@ -135,7 +135,7 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
-    elif vector_config.mode in {"classic", "smooth"}:
+    elif vector_config.mode in {"classic", "smooth", "vector"}:
         contours, ink_mask, skeleton = trace_line_art_strokes(
             gray,
             simplify_epsilon=settings.simplify_epsilon,
