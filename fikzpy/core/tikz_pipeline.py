@@ -43,9 +43,14 @@ def build_tikz_from_image(
     contours = processing_result.contours
     log_event("Vectorization", f"contours={len(contours)}")
 
-    if effective_mode == "vector":
+    if effective_mode in {"vector", "fidelity"}:
         log_event("Vectorization", "pipeline=contours_to_vector_objects")
-        fit_result = fit_contours_to_vector_objects(contours, processing_result.original_bgr.shape, options)
+        fit_result = fit_contours_to_vector_objects(
+            contours,
+            processing_result.original_bgr.shape,
+            options,
+            high_fidelity=effective_mode == "fidelity",
+        )
         vector_objects = fit_result.objects
         stats = count_vector_objects(vector_objects)
         _log_bezier_fit_stats(fit_result.input_points, fit_result.simplified_points, stats, fit_result.geometric_reduction)

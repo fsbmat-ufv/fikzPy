@@ -135,30 +135,37 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
-    elif vector_config.mode in {"classic", "smooth", "vector"}:
+    elif vector_config.mode in {"classic", "smooth", "vector", "fidelity"}:
+        is_vector_like = vector_config.mode in {"vector", "fidelity"}
+        is_fidelity = vector_config.mode == "fidelity"
         effective_min_path_length = (
-            min(settings.min_path_length, 2) if vector_config.mode == "vector" else settings.min_path_length
+            min(settings.min_path_length, 1 if is_fidelity else 2)
+            if is_vector_like
+            else settings.min_path_length
+        )
+        effective_simplify_epsilon = (
+            min(settings.simplify_epsilon, 0.002) if is_fidelity else settings.simplify_epsilon
         )
         contours, ink_mask, skeleton = trace_line_art_strokes(
             gray,
-            simplify_epsilon=settings.simplify_epsilon,
+            simplify_epsilon=effective_simplify_epsilon,
             settings=StrokeTracingSettings(
                 dark_threshold=settings.line_art_threshold,
                 min_path_length=effective_min_path_length,
                 smooth_iterations=settings.stroke_smoothing,
-                recover_faint_strokes=vector_config.mode == "vector",
-                snap_junction_endpoints=vector_config.mode == "vector",
-                recover_blackhat_strokes=vector_config.mode == "vector",
-                denoise_method="bilateral" if vector_config.mode == "vector" else "median",
-                use_clahe=vector_config.mode == "vector",
+                recover_faint_strokes=is_vector_like,
+                snap_junction_endpoints=is_vector_like,
+                recover_blackhat_strokes=is_vector_like,
+                denoise_method="bilateral" if is_vector_like else "median",
+                use_clahe=is_vector_like,
                 clahe_clip_limit=1.8,
                 clahe_tile_grid_size=8,
-                use_adaptive_threshold=vector_config.mode == "vector",
-                threshold_offset=3 if vector_config.mode == "vector" else 9,
-                close_gaps=vector_config.mode == "vector",
+                use_adaptive_threshold=is_vector_like,
+                threshold_offset=2 if is_fidelity else 3 if vector_config.mode == "vector" else 9,
+                close_gaps=is_vector_like,
                 closing_kernel_size=3,
-                skeleton_method="skimage" if vector_config.mode == "vector" else "zhang-suen",
-                multiscale_skeleton=vector_config.mode == "vector",
+                skeleton_method="skimage" if is_vector_like else "zhang-suen",
+                multiscale_skeleton=is_vector_like,
             ),
             preprocessing=vector_config.preprocessing if vector_config.mode == "smooth" else None,
         )

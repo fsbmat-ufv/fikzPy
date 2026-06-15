@@ -97,6 +97,11 @@ class VectorizationConfig:
             ),
         )
 
+    @classmethod
+    def fidelity(cls) -> "VectorizationConfig":
+        """Return a high-fidelity preset that favors detail preservation."""
+        return cls(mode="fidelity")
+
 
 def config_for_mode(mode: str) -> VectorizationConfig:
     """Return a vectorization configuration for a public mode name."""
@@ -105,6 +110,8 @@ def config_for_mode(mode: str) -> VectorizationConfig:
         return VectorizationConfig.classic()
     if normalized == "vector":
         return VectorizationConfig(mode="vector")
+    if normalized in {"fidelity", "high_fidelity", "high-fidelity", "fidelidade"}:
+        return VectorizationConfig.fidelity()
     if normalized == "smooth":
         return VectorizationConfig.smooth()
     if normalized == "contours":

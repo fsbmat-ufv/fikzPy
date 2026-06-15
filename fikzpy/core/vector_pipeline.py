@@ -36,15 +36,19 @@ def contours_to_vector_objects(
     contours: list[Contour],
     image_shape: tuple[int, ...],
     options: TikzOptions,
+    *,
+    high_fidelity: bool = False,
 ) -> tuple[VectorObject, ...]:
     """Convert contours to fitted vector objects without changing extraction."""
-    return fit_contours_to_vector_objects(contours, image_shape, options).objects
+    return fit_contours_to_vector_objects(contours, image_shape, options, high_fidelity=high_fidelity).objects
 
 
 def fit_contours_to_vector_objects(
     contours: list[Contour],
     image_shape: tuple[int, ...],
     options: TikzOptions,
+    *,
+    high_fidelity: bool = False,
 ) -> VectorPipelineResult:
     """Convert contours to global fitted vector objects and diagnostics."""
     objects: list[VectorObject] = []
@@ -59,9 +63,9 @@ def fit_contours_to_vector_objects(
             continue
 
         points = _contour_points_to_tikz_points(contour, image_shape, options)
-        simplified = _simplify_points_for_contour(points, contour)
+        simplified = _simplify_points_for_contour(points, contour, high_fidelity=high_fidelity)
         simplified_points += len(simplified)
-        fitted = _points_to_fitted_objects(simplified, closed=contour.closed)
+        fitted = _points_to_fitted_objects(simplified, closed=contour.closed, high_fidelity=high_fidelity)
         if len(fitted) == 1:
             objects.append(fitted[0])
         elif fitted:
@@ -114,14 +118,24 @@ def _points_to_bezier_group(points: tuple[Point, ...], *, closed: bool, options:
     return PathGroup(curves)
 
 
-def _points_to_fitted_objects(points: tuple[Point, ...], *, closed: bool) -> tuple[VectorObject, ...]:
+def _points_to_fitted_objects(
+    points: tuple[Point, ...],
+    *,
+    closed: bool,
+    high_fidelity: bool = False,
+) -> tuple[VectorObject, ...]:
     if len(points) < 2:
         return ()
 
     path_length = _point_path_length(points, closed=closed)
-    error_tolerance = max(0.01, min(0.08, path_length * 0.015))
-    straightness_tolerance = max(0.006, min(0.03, path_length * 0.004))
-    min_bezier_length = max(0.04, min(0.12, path_length * 0.02))
+    if high_fidelity:
+        error_tolerance = max(0.006, min(0.04, path_length * 0.008))
+        straightness_tolerance = max(0.004, min(0.02, path_length * 0.003))
+        min_bezier_length = max(0.03, min(0.1, path_length * 0.015))
+    else:
+        error_tolerance = max(0.01, min(0.08, path_length * 0.015))
+        straightness_tolerance = max(0.006, min(0.03, path_length * 0.004))
+        min_bezier_length = max(0.04, min(0.12, path_length * 0.02))
     fitted = fit_cubic_beziers(
         points,
         error_tolerance=error_tolerance,
@@ -185,9 +199,17 @@ def _primitive_to_vector_object(
     return None
 
 
-def _simplify_points_for_contour(points: tuple[Point, ...], contour: Contour) -> tuple[Point, ...]:
+def _simplify_points_for_contour(
+    points: tuple[Point, ...],
+    contour: Contour,
+    *,
+    high_fidelity: bool = False,
+) -> tuple[Point, ...]:
     path_length = contour_length(contour)
-    tolerance = max(0.001, min(0.005, path_length * 0.001))
+    if high_fidelity:
+        tolerance = max(0.0, min(0.0018, path_length * 0.00035))
+    else:
+        tolerance = max(0.001, min(0.005, path_length * 0.001))
     simplified = simplify_points_for_bezier_fit(points, tolerance=tolerance, closed=contour.closed)
     if len(simplified) < 2:
         return points

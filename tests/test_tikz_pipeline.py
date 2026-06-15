@@ -45,6 +45,24 @@ def test_vector_mode_uses_vector_object_pipeline() -> None:
     assert ".. controls" in result.tikz_code
 
 
+def test_fidelity_mode_preserves_more_vector_detail_than_vector_mode() -> None:
+    image = _line_art_image()
+    vector = build_tikz_from_image(
+        image,
+        ProcessingSettings(vectorization_mode="vector"),
+        TikzOptions(use_bezier=True),
+    )
+    fidelity = build_tikz_from_image(
+        image,
+        ProcessingSettings(vectorization_mode="fidelity"),
+        TikzOptions(use_bezier=True),
+    )
+
+    assert fidelity.effective_mode == "fidelity"
+    assert fidelity.vector_stats.total >= vector.vector_stats.total
+    assert len(fidelity.tikz_code) >= len(vector.tikz_code)
+
+
 def test_classic_and_vector_tex_outputs_are_different(tmp_path: Path) -> None:
     image = _line_art_image()
     classic = build_tikz_from_image(
