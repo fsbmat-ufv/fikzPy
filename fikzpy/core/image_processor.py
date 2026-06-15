@@ -143,6 +143,7 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
                 dark_threshold=settings.line_art_threshold,
                 min_path_length=settings.min_path_length,
                 smooth_iterations=settings.stroke_smoothing,
+                recover_faint_strokes=vector_config.mode == "vector",
             ),
             preprocessing=vector_config.preprocessing if vector_config.mode == "smooth" else None,
         )

@@ -27,6 +27,10 @@ class StrokeTracingSettings:
     min_component_area: int = 8
     min_path_length: int = 3
     smooth_iterations: int = 1
+    recover_faint_strokes: bool = False
+    faint_stroke_block_size: int = 31
+    faint_stroke_min_delta: int = 7
+    faint_stroke_max_gray: int = 246
 
 
 def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = None) -> np.ndarray:
@@ -51,6 +55,9 @@ def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = 
             block_size,
             settings.threshold_offset,
         )
+
+    if settings.recover_faint_strokes:
+        mask = _recover_faint_strokes(denoised, mask, settings)
 
     return _remove_small_components(mask, settings.min_component_area)
 
@@ -159,6 +166,28 @@ def _line_art_threshold(
         threshold = min(threshold, background - float(settings.background_margin))
 
     return max(0.0, min(255.0, threshold))
+
+
+def _recover_faint_strokes(
+    gray: np.ndarray,
+    base_mask: np.ndarray,
+    settings: StrokeTracingSettings,
+) -> np.ndarray:
+    """Add faint local-contrast strokes without lowering the global threshold."""
+    block_size = _odd_at_least(settings.faint_stroke_block_size, 3)
+    background = cv2.GaussianBlur(gray, (block_size, block_size), 0)
+    contrast = background.astype(np.int16) - gray.astype(np.int16)
+
+    candidates = (
+        (contrast >= int(settings.faint_stroke_min_delta))
+        & (gray <= int(settings.faint_stroke_max_gray))
+        & (background >= int(settings.faint_stroke_max_gray))
+    )
+    faint_mask = (candidates.astype(np.uint8) * 255)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    faint_mask = cv2.morphologyEx(faint_mask, cv2.MORPH_CLOSE, kernel)
+    return cv2.bitwise_or(base_mask, faint_mask)
 
 
 def _smooth_polyline(points: np.ndarray, *, closed: bool, iterations: int) -> np.ndarray:
