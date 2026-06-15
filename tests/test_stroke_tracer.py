@@ -68,6 +68,25 @@ def test_blackhat_recovery_can_keep_low_contrast_strokes() -> None:
     assert mask[30, 40] == 255
 
 
+def test_adaptive_clahe_threshold_keeps_faint_line_on_bright_background() -> None:
+    gray = np.full((60, 90), 255, dtype=np.uint8)
+    cv2.line(gray, (10, 30), (80, 30), 244, 2)
+
+    mask = extract_ink_mask(
+        gray,
+        StrokeTracingSettings(
+            dark_threshold=215,
+            denoise_method="none",
+            use_clahe=True,
+            use_adaptive_threshold=True,
+            threshold_block_size=21,
+            threshold_offset=2,
+        ),
+    )
+
+    assert mask[30, 45] == 255
+
+
 def test_trace_strokes_from_skeleton_returns_open_path() -> None:
     skeleton = np.zeros((30, 30), dtype=np.uint8)
     cv2.line(skeleton, (5, 15), (25, 15), 255, 1)
@@ -77,6 +96,16 @@ def test_trace_strokes_from_skeleton_returns_open_path() -> None:
     assert len(strokes) == 1
     assert not strokes[0].closed
     assert len(strokes[0].points) >= 2
+
+
+def test_skeletonize_skimage_method_keeps_fallback_shape() -> None:
+    mask = np.zeros((30, 30), dtype=np.uint8)
+    cv2.line(mask, (5, 15), (25, 15), 255, 3)
+
+    result = skeletonize(mask, method="skimage")
+
+    assert result.shape == mask.shape
+    assert np.count_nonzero(result) > 0
 
 
 def test_trace_strokes_can_snap_branch_endpoints_to_junction_center() -> None:

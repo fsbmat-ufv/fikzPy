@@ -38,6 +38,18 @@ class StrokeTracingSettings:
     blackhat_threshold: int = 12
     blackhat_min_gray: int = 80
     blackhat_max_gray: int = 250
+    denoise_method: str = "median"
+    use_clahe: bool = False
+    clahe_clip_limit: float = 2.0
+    clahe_tile_grid_size: int = 8
+    use_adaptive_threshold: bool = False
+    adaptive_min_delta: int = 2
+    adaptive_max_gray: int = 252
+    close_gaps: bool = False
+    closing_kernel_size: int = 3
+    skeleton_method: str = "zhang-suen"
+    multiscale_skeleton: bool = False
+    multiscale_closing_kernel_size: int = 3
 
 
 def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = None) -> np.ndarray:
@@ -46,16 +58,19 @@ def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = 
     if gray.ndim != 2:
         raise ValueError("Line-art extraction expects a grayscale image.")
 
-    denoised = cv2.medianBlur(gray, 3)
-    otsu_threshold, _ = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    threshold = _line_art_threshold(denoised, otsu_threshold, settings)
+    denoised = _denoise_gray(gray, settings)
+    threshold_source = _apply_clahe(denoised, settings) if settings.use_clahe else denoised
+    otsu_threshold, _ = cv2.threshold(threshold_source, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    threshold = _line_art_threshold(threshold_source, otsu_threshold, settings)
 
-    if threshold < 245:
-        _, mask = cv2.threshold(denoised, threshold, 255, cv2.THRESH_BINARY_INV)
+    if settings.use_adaptive_threshold:
+        mask = _adaptive_ink_mask(threshold_source, denoised, threshold, settings)
+    elif threshold < 245:
+        _, mask = cv2.threshold(threshold_source, threshold, 255, cv2.THRESH_BINARY_INV)
     else:
         block_size = _odd_at_least(settings.threshold_block_size, 3)
         mask = cv2.adaptiveThreshold(
-            denoised,
+            threshold_source,
             255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY_INV,
@@ -67,11 +82,41 @@ def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = 
         mask = _recover_faint_strokes(denoised, mask, settings)
     if settings.recover_blackhat_strokes:
         mask = _recover_blackhat_strokes(denoised, mask, settings)
+    if settings.close_gaps:
+        mask = _close_mask_gaps(mask, settings.closing_kernel_size)
 
     return _remove_small_components(mask, settings.min_component_area)
 
 
-def skeletonize(binary_mask: np.ndarray) -> np.ndarray:
+def skeletonize(binary_mask: np.ndarray, *, method: str = "zhang-suen") -> np.ndarray:
+    """Thin a binary mask with skimage when available, otherwise Zhang-Suen."""
+    normalized = method.strip().lower()
+    if normalized in {"skimage", "auto"}:
+        skimage_result = _skeletonize_with_skimage(binary_mask)
+        if skimage_result is not None:
+            return skimage_result
+
+    return _skeletonize_zhang_suen(binary_mask)
+
+
+def skeletonize_multiscale(
+    binary_mask: np.ndarray,
+    *,
+    method: str = "zhang-suen",
+    closing_kernel_size: int = 3,
+) -> np.ndarray:
+    """Skeletonize the original and lightly closed masks, then thin the union."""
+    base = skeletonize(binary_mask, method=method)
+    closed = _close_mask_gaps(binary_mask, closing_kernel_size)
+    if np.array_equal(closed, binary_mask):
+        return base
+
+    closed_skeleton = skeletonize(closed, method=method)
+    combined = cv2.bitwise_or(base, closed_skeleton)
+    return skeletonize(combined, method=method)
+
+
+def _skeletonize_zhang_suen(binary_mask: np.ndarray) -> np.ndarray:
     """Thin a binary mask with the Zhang-Suen algorithm."""
     image = (binary_mask > 0).astype(np.uint8)
     changed = True
@@ -153,7 +198,14 @@ def trace_line_art_strokes(
     ink_mask = extract_ink_mask(source, settings)
     if preprocessing is not None:
         ink_mask = apply_mask_morphology(ink_mask, preprocessing)
-    skeleton = skeletonize(ink_mask)
+    if settings.multiscale_skeleton:
+        skeleton = skeletonize_multiscale(
+            ink_mask,
+            method=settings.skeleton_method,
+            closing_kernel_size=settings.multiscale_closing_kernel_size,
+        )
+    else:
+        skeleton = skeletonize(ink_mask, method=settings.skeleton_method)
     contours = trace_strokes_from_skeleton(
         skeleton,
         simplify_epsilon=simplify_epsilon,
@@ -178,6 +230,73 @@ def _line_art_threshold(
         threshold = min(threshold, background - float(settings.background_margin))
 
     return max(0.0, min(255.0, threshold))
+
+
+def _denoise_gray(gray: np.ndarray, settings: StrokeTracingSettings) -> np.ndarray:
+    """Apply a small denoising pass before thresholding."""
+    method = settings.denoise_method.strip().lower()
+    if method in {"", "none"}:
+        return gray.astype(np.uint8, copy=True)
+    if method == "bilateral":
+        return cv2.bilateralFilter(gray, 5, 35.0, 35.0)
+    if method == "nlmeans":
+        return cv2.fastNlMeansDenoising(gray, None, h=7, templateWindowSize=7, searchWindowSize=21)
+    return cv2.medianBlur(gray, 3)
+
+
+def _apply_clahe(gray: np.ndarray, settings: StrokeTracingSettings) -> np.ndarray:
+    """Enhance local contrast so faint pencil-like strokes survive thresholding."""
+    tile_size = max(2, int(settings.clahe_tile_grid_size))
+    clahe = cv2.createCLAHE(
+        clipLimit=max(0.1, float(settings.clahe_clip_limit)),
+        tileGridSize=(tile_size, tile_size),
+    )
+    return clahe.apply(gray)
+
+
+def _adaptive_ink_mask(
+    threshold_source: np.ndarray,
+    gray: np.ndarray,
+    global_threshold: float,
+    settings: StrokeTracingSettings,
+) -> np.ndarray:
+    """Combine Gaussian adaptive thresholding with conservative local-contrast gates."""
+    block_size = _odd_at_least(settings.threshold_block_size, 3)
+    adaptive = cv2.adaptiveThreshold(
+        threshold_source,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        block_size,
+        int(settings.threshold_offset),
+    )
+    _, global_mask = cv2.threshold(threshold_source, global_threshold, 255, cv2.THRESH_BINARY_INV)
+
+    background = cv2.GaussianBlur(gray, (block_size, block_size), 0)
+    contrast = background.astype(np.int16) - gray.astype(np.int16)
+    plausible_ink = (gray <= int(settings.adaptive_max_gray)) | (contrast >= int(settings.adaptive_min_delta))
+    adaptive = cv2.bitwise_and(adaptive, (plausible_ink.astype(np.uint8) * 255))
+    return cv2.bitwise_or(global_mask, adaptive)
+
+
+def _close_mask_gaps(mask: np.ndarray, kernel_size: int) -> np.ndarray:
+    """Reconnect one- or two-pixel gaps in a binary ink mask."""
+    size = _odd_at_least(kernel_size, 1)
+    if size <= 1:
+        return mask.copy()
+    kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (size, size))
+    return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+
+def _skeletonize_with_skimage(binary_mask: np.ndarray) -> np.ndarray | None:
+    """Return a skimage skeleton when scikit-image is installed."""
+    try:
+        from skimage.morphology import skeletonize as skimage_skeletonize
+    except ImportError:
+        return None
+
+    skeleton = skimage_skeletonize(binary_mask > 0)
+    return (skeleton.astype(np.uint8) * 255)
 
 
 def _recover_faint_strokes(

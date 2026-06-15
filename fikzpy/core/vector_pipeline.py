@@ -10,8 +10,10 @@ from fikzpy.core.bezier_fit import can_use_bezier, catmull_rom_to_bezier, fit_cu
 from fikzpy.core.bezier_fit import simplify_points_for_bezier_fit
 from fikzpy.core.contour_detector import Contour
 from fikzpy.core.contour_cleaning import contour_length
+from fikzpy.core.primitive_detection import Primitive, detect_primitive
 from fikzpy.core.tikz_generator import TikzOptions, image_point_to_tikz
-from fikzpy.core.vector_objects import BezierCurve, Line, PathGroup, Point, Polyline, VectorObject
+from fikzpy.core.vector_objects import BezierCurve, Circle, Ellipse, Line, PathGroup, Point, Polyline
+from fikzpy.core.vector_objects import Rectangle, VectorObject
 
 
 @dataclass(frozen=True)
@@ -49,8 +51,14 @@ def fit_contours_to_vector_objects(
     input_points = 0
     simplified_points = 0
     for contour in contours:
+        input_points += len(contour.points)
+        primitive = _contour_to_detected_primitive(contour, image_shape, options)
+        if primitive is not None:
+            simplified_points += len(contour.points)
+            objects.append(primitive)
+            continue
+
         points = _contour_points_to_tikz_points(contour, image_shape, options)
-        input_points += len(points)
         simplified = _simplify_points_for_contour(points, contour)
         simplified_points += len(simplified)
         fitted = _points_to_fitted_objects(simplified, closed=contour.closed)
@@ -124,6 +132,57 @@ def _points_to_fitted_objects(points: tuple[Point, ...], *, closed: bool) -> tup
         simplify_tolerance=0.0,
     )
     return tuple(fitted)
+
+
+def _contour_to_detected_primitive(
+    contour: Contour,
+    image_shape: tuple[int, ...],
+    options: TikzOptions,
+) -> VectorObject | None:
+    if not contour.closed:
+        return None
+
+    primitive = detect_primitive(contour, min_confidence=0.9)
+    if primitive is None:
+        return None
+    return _primitive_to_vector_object(primitive, image_shape, options)
+
+
+def _primitive_to_vector_object(
+    primitive: Primitive,
+    image_shape: tuple[int, ...],
+    options: TikzOptions,
+) -> VectorObject | None:
+    scale = float(options.width_units) / max(float(image_shape[1]), 1.0)
+    if primitive.kind in {"circle", "ellipse"}:
+        center = Point.from_pair(
+            tuple(
+                image_point_to_tikz(
+                    (float(primitive.params["center_x"]), float(primitive.params["center_y"])),
+                    image_shape,
+                    width_units=options.width_units,
+                )
+            )
+        )
+        radius_x = float(primitive.params["axis_a"]) * scale / 2.0
+        radius_y = float(primitive.params["axis_b"]) * scale / 2.0
+        if primitive.kind == "circle":
+            return Circle(center=center, radius=(radius_x + radius_y) / 2.0)
+        return Ellipse(center=center, radius_x=radius_x, radius_y=radius_y, rotation=-float(primitive.params["angle"]))
+
+    if primitive.kind == "rectangle":
+        image_points = primitive.params.get("points", [])
+        tikz_points = [
+            image_point_to_tikz(point, image_shape, width_units=options.width_units)
+            for point in image_points
+        ]
+        if not tikz_points:
+            return None
+        xs = [float(point[0]) for point in tikz_points]
+        ys = [float(point[1]) for point in tikz_points]
+        return Rectangle(Point(min(xs), min(ys)), Point(max(xs), max(ys)))
+
+    return None
 
 
 def _simplify_points_for_contour(points: tuple[Point, ...], contour: Contour) -> tuple[Point, ...]:

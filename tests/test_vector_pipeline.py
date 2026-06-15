@@ -5,7 +5,7 @@ import numpy as np
 from fikzpy.core.contour_detector import Contour
 from fikzpy.core.tikz_generator import TikzOptions
 from fikzpy.core.vector_exporter import count_vector_objects, flatten_vector_objects
-from fikzpy.core.vector_objects import BezierCurve, Line, Point
+from fikzpy.core.vector_objects import BezierCurve, Circle, Line, Point
 from fikzpy.core.vector_pipeline import contours_to_local_bezier_objects, fit_contours_to_vector_objects
 
 
@@ -31,6 +31,17 @@ def test_fit_contours_to_vector_objects_keeps_straight_contour_as_line() -> None
     stats = count_vector_objects(fitted.objects)
     assert stats.lines == 1
     assert isinstance(fitted.objects[0], Line)
+
+
+def test_fit_contours_to_vector_objects_detects_closed_circle() -> None:
+    angles = np.linspace(0, 2 * np.pi, 72, endpoint=False)
+    points = np.column_stack([50 + 20 * np.cos(angles), 50 + 20 * np.sin(angles)])
+    contour = Contour(points=points, closed=True, area=0.0)
+
+    fitted = fit_contours_to_vector_objects([contour], (100, 100, 3), TikzOptions(width_units=10))
+
+    assert len(fitted.objects) == 1
+    assert isinstance(fitted.objects[0], Circle)
 
 
 def test_fit_contours_to_vector_objects_preserves_bezier_endpoints() -> None:
