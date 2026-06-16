@@ -1,0 +1,83 @@
+[
+  {
+    "ambiguous_threshold": true,
+    "category": "line_art",
+    "components": 1,
+    "foreground_ratio": 0.110857,
+    "image": "examples/classic_semantic_baseline/geometric_diagram.png",
+    "method": "global_sweep",
+    "score": 0.975198,
+    "threshold": 224.0,
+    "threshold_components": 1,
+    "threshold_tiny_components": 0,
+    "tiny_components": 0,
+    "warnings": [
+      "threshold selection is ambiguous"
+    ]
+  },
+  {
+    "ambiguous_threshold": true,
+    "category": "line_art",
+    "components": 1,
+    "foreground_ratio": 0.074213,
+    "image": "examples/classic_semantic_baseline/line_art_bw.png",
+    "method": "global_sweep",
+    "score": 0.968172,
+    "threshold": 224.0,
+    "threshold_components": 1,
+    "threshold_tiny_components": 0,
+    "tiny_components": 0,
+    "warnings": [
+      "threshold selection is ambiguous"
+    ]
+  },
+  {
+    "ambiguous_threshold": true,
+    "category": "line_art",
+    "components": 1,
+    "foreground_ratio": 0.062146,
+    "image": "examples/classic_semantic_baseline/noisy_grayscale.png",
+    "method": "global_sweep",
+    "score": 0.717422,
+    "threshold": 160.0,
+    "threshold_components": 1,
+    "threshold_tiny_components": 0,
+    "tiny_components": 0,
+    "warnings": [
+      "threshold selection is ambiguous"
+    ]
+  },
+  {
+    "ambiguous_threshold": true,
+    "category": "binary_outline",
+    "components": 1,
+    "foreground_ratio": 0.309509,
+    "image": "examples/classic_semantic_baseline/silhouette_bw.png",
+    "method": "global_sweep",
+    "score": 0.93291,
+    "threshold": 224.0,
+    "threshold_components": 1,
+    "threshold_tiny_components": 0,
+    "tiny_components": 0,
+    "warnings": [
+      "threshold selection is ambiguous"
+    ]
+  },
+  {
+    "ambiguous_threshold": true,
+    "category": "color_regions",
+    "components": 2,
+    "foreground_ratio": 0.407143,
+    "image": "examples/classic_semantic_baseline/simple_color.png",
+    "method": "global_sweep",
+    "score": 0.933084,
+    "threshold": 224.0,
+    "threshold_components": 2,
+    "threshold_tiny_components": 0,
+    "tiny_components": 0,
+    "warnings": [
+      "threshold selection is ambiguous",
+      "color category uses grayscale diagnostic preprocessing only"
+    ]
+  }
+]
