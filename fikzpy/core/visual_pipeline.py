@@ -15,6 +15,7 @@ from fikzpy.core.contour_detector import Contour
 from fikzpy.core.diagnostics import log_event
 from fikzpy.core.tikz_generator import TikzOptions
 from fikzpy.core.vector_objects import BezierCurve, Line, Point, Polyline, VectorPrimitive
+from fikzpy.core.visual_postprocessor import postprocess_visual_tikz_picture
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,9 @@ class VisualTikzStats:
     svg_bytes: int = 0
     tikz_bytes: int = 0
     used_svg2tikz: bool = False
+    postprocessed: bool = False
+    draw_commands: int = 0
+    subpaths: int = 0
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,10 @@ def generate_visual_tikz_picture(
     if not tikz_picture:
         tikz_picture = _generate_direct_visual_tikz(contours, image_shape, options=options, settings=settings)
         used_svg2tikz = False
+    postprocess_result = postprocess_visual_tikz_picture(tikz_picture)
+    tikz_picture = postprocess_result.tikz_picture
+    draw_commands = postprocess_result.stats.output_draw_commands or _count_draw_commands(tikz_picture)
+    subpaths = postprocess_result.stats.subpaths or _count_cycle_subpaths(tikz_picture)
 
     return VisualTikzResult(
         tikz_picture=tikz_picture,
@@ -110,6 +118,9 @@ def generate_visual_tikz_picture(
             svg_bytes=len(svg_source.encode("utf-8")),
             tikz_bytes=len(tikz_picture.encode("utf-8")),
             used_svg2tikz=used_svg2tikz,
+            postprocessed=postprocess_result.stats.changed,
+            draw_commands=draw_commands,
+            subpaths=subpaths,
         ),
     )
 
@@ -307,7 +318,8 @@ def _generate_direct_visual_tikz(
         parts.append(_svg_path_to_tikz_coordinates(path, height=height, scale=scale, precision=options.precision))
 
     if parts:
-        lines.append(f"  \\path[fill={color}, even odd rule]")
+        lines.append(f"  \\tikzset{{fikzInk/.style={{fill={color}, draw={color}, line width=0pt, even odd rule}}}}")
+        lines.append("  \\draw[fikzInk]")
         lines.append("    " + "\n    ".join(parts) + ";")
     else:
         lines.append("  % No visual ink detected.")
@@ -352,6 +364,14 @@ def _extract_tikzpicture(document: str) -> str:
     if begin < 0 or end < 0:
         return ""
     return document[begin : end + len(end_marker)]
+
+
+def _count_draw_commands(tikz_picture: str) -> int:
+    return len(re.findall(r"\\draw(?:\[|[ \t\r\n])", tikz_picture))
+
+
+def _count_cycle_subpaths(tikz_picture: str) -> int:
+    return len(re.findall(r"--\s*cycle", tikz_picture))
 
 
 def _normalize_svg2tikz_picture(picture: str, options: TikzOptions) -> str:

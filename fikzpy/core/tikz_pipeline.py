@@ -58,6 +58,9 @@ def build_tikz_from_image(
         log_event("Visual", f"svg_bytes={visual_result.stats.svg_bytes}")
         log_event("Visual", f"tikz_bytes={visual_result.stats.tikz_bytes}")
         log_event("Visual", f"used_svg2tikz={visual_result.stats.used_svg2tikz}")
+        log_event("Visual", f"postprocessed={visual_result.stats.postprocessed}")
+        log_event("Visual", f"subpaths={visual_result.stats.subpaths}")
+        log_event("Visual", f"draw_commands={visual_result.stats.draw_commands}")
         stats = VectorObjectStats()
         _log_vector_stats(stats)
         return TikzBuildResult(

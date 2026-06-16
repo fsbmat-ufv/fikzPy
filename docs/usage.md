@@ -20,7 +20,8 @@ python -m fikzpy.main
 2. Choose the vectorization mode:
    - `Classic` for the stable line-art behavior;
    - `Visual` for maximum visual fidelity with filled TikZ paths generated
-     through SVG-style tracing and `svg2tikz`;
+     through SVG-style tracing, `svg2tikz`, and a post-processing pass that
+     emits layered `\draw` commands;
    - `Contornos` for the classic Canny contour pipeline.
 3. Adjust the parameters:
    - ink threshold for faint strokes;
@@ -62,6 +63,8 @@ Use the files in `examples/comparison/` as a reproducible comparison:
 - `notes.md`.
 
 `Classic` is the rollback mode. `Visual` should be used when fidelity matters
-more than compact, hand-editable TikZ; it traces the visible ink as filled paths
-rather than as stroke centerlines. `Contornos` is useful for images where Canny
+more than centerline editability; it traces the visible ink as filled paths
+rather than as stroke centerlines, then groups the svg2tikz output into
+`fikzInk` and `fikzErase` `\draw` layers. The erase layers assume the normal
+white standalone page background. `Contornos` is useful for images where Canny
 edge contours are a better fit.

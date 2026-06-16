@@ -126,8 +126,9 @@ GUI exposes the three primary tracing modes:
 
 - `Classic`: stable line-art tracing, kept as the rollback path.
 - `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
-  This is the highest visual-fidelity mode, but the output is less compact and
-  less hand-editable than centerline `\draw` paths.
+  This is the highest visual-fidelity mode. The first SVG-to-TikZ conversion is
+  post-processed into layered `\draw[fikzInk]` and `\draw[fikzErase]` commands,
+  preserving cubic Bezier segments while avoiding one huge monolithic `\path`.
 - `Contornos`: classic Canny/contour tracing for geometric or filled images.
 
 The codebase also keeps experimental centerline modes such as `Vector`,
@@ -150,7 +151,12 @@ The `Visual` backend follows a different sequence:
 3. trace the outer boundary of the ink shapes;
 4. fit SVG-style cubic paths;
 5. convert the SVG path to TikZ with `svg2tikz`;
-6. emit filled `\path[fill=black, even odd rule]` commands.
+6. split the monolithic filled path into grouped `\draw` commands.
+
+The Visual post-processor keeps the filled-ink representation because that is
+what preserves the printed PDF most faithfully. Holes are represented as white
+erase layers on the standalone white page, so this mode is optimized for visual
+fidelity rather than transparent-background compositing.
 
 Use `Visual` when the PDF must look close to the source image. Use `Classic`
 when the priority is editable mathematical strokes.

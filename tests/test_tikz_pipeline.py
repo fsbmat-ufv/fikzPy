@@ -73,7 +73,10 @@ def test_visual_mode_uses_filled_svg_trace_pipeline() -> None:
     assert result.effective_mode == "visual"
     assert result.vector_objects == ()
     assert result.visual_stats.paths > 0
-    assert "\\path[fill=black" in result.tikz_code
+    assert result.visual_stats.postprocessed
+    assert result.visual_stats.draw_commands > 0
+    assert "\\draw[fikzInk]" in result.tikz_code
+    assert "\\path[fill=black" not in result.tikz_code
     assert "cycle" in result.tikz_code
 
 
