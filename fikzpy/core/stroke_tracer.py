@@ -10,6 +10,7 @@ import numpy as np
 
 from fikzpy.core.contour_detector import Contour, simplify_polyline
 from fikzpy.core.preprocessing import apply_mask_morphology, preprocess_gray
+from fikzpy.core.skeleton_strokes import trace_complete_strokes
 from fikzpy.core.vectorization_config import PreprocessingConfig
 
 
@@ -50,6 +51,12 @@ class StrokeTracingSettings:
     skeleton_method: str = "zhang-suen"
     multiscale_skeleton: bool = False
     multiscale_closing_kernel_size: int = 3
+    complete_strokes: bool = False
+    spur_length: float = 8.0
+    link_max_angle_deg: float = 60.0
+    min_stroke_length: float = 0.0
+    corner_smoothing: int = 0
+    corner_threshold_cos: float = -0.7
 
 
 def extract_ink_mask(gray: np.ndarray, settings: StrokeTracingSettings | None = None) -> np.ndarray:
@@ -206,13 +213,28 @@ def trace_line_art_strokes(
         )
     else:
         skeleton = skeletonize(ink_mask, method=settings.skeleton_method)
-    contours = trace_strokes_from_skeleton(
-        skeleton,
-        simplify_epsilon=simplify_epsilon,
-        min_path_length=settings.min_path_length,
-        smooth_iterations=settings.smooth_iterations,
-        snap_junction_endpoints=settings.snap_junction_endpoints,
-    )
+    if settings.complete_strokes:
+        # Pencil-over-image tracing: clean staircases, prune spurs and link
+        # strokes through junctions so each pencil stroke stays whole.
+        contours = trace_complete_strokes(
+            skeleton,
+            simplify_epsilon=simplify_epsilon,
+            min_path_length=settings.min_path_length,
+            smooth_iterations=settings.smooth_iterations,
+            spur_length=settings.spur_length,
+            link_max_angle_deg=settings.link_max_angle_deg,
+            min_stroke_length=settings.min_stroke_length,
+            corner_smoothing=settings.corner_smoothing,
+            corner_threshold_cos=settings.corner_threshold_cos,
+        )
+    else:
+        contours = trace_strokes_from_skeleton(
+            skeleton,
+            simplify_epsilon=simplify_epsilon,
+            min_path_length=settings.min_path_length,
+            smooth_iterations=settings.smooth_iterations,
+            snap_junction_endpoints=settings.snap_junction_endpoints,
+        )
     return contours, ink_mask, skeleton
 
 

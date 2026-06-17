@@ -72,13 +72,16 @@ def build_tikz_from_image(
             visual_stats=visual_result.stats,
         )
 
-    if effective_mode in {"vector", "fidelity"}:
+    if effective_mode in {"classic", "vector", "fidelity"}:
+        # Classic now draws like a pencil over the image: centerline strokes fitted
+        # to a few \draw lines and cubic Bezier curves (no fill), instead of long
+        # raw polylines. Vector/fidelity reuse the same compact fitting pipeline.
         log_event("Vectorization", "pipeline=contours_to_vector_objects")
         fit_result = fit_contours_to_vector_objects(
             contours,
             processing_result.original_bgr.shape,
             options,
-            high_fidelity=effective_mode == "fidelity",
+            high_fidelity=effective_mode in {"classic", "fidelity"},
         )
         vector_objects = fit_result.objects
         stats = count_vector_objects(vector_objects)

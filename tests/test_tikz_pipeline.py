@@ -19,7 +19,7 @@ def _line_art_image() -> np.ndarray:
     return image
 
 
-def test_classic_mode_uses_contour_tikz_pipeline() -> None:
+def test_classic_mode_draws_compact_pencil_strokes() -> None:
     result = build_tikz_from_image(
         _line_art_image(),
         ProcessingSettings(vectorization_mode="classic"),
@@ -27,8 +27,29 @@ def test_classic_mode_uses_contour_tikz_pipeline() -> None:
     )
 
     assert result.effective_mode == "classic"
-    assert result.vector_objects == ()
+    # Classic now produces compact fitted \draw strokes (lines + Bezier), no fill.
+    assert result.vector_objects
+    assert result.vector_stats.total > 0
+    assert "\\draw" in result.tikz_code
+    assert "fill" not in result.tikz_code
     assert "% FIKZPY VECTOR MODE" not in result.tikz_code
+
+
+def test_classic_mode_is_more_compact_than_raw_polylines() -> None:
+    from fikzpy.core.image_processor import process_image
+    from fikzpy.core.tikz_generator import generate_tikz_picture
+
+    image = _line_art_image()
+    settings = ProcessingSettings(vectorization_mode="classic")
+    options = TikzOptions(use_bezier=False)
+
+    classic = build_tikz_from_image(image, settings, options)
+    raw = generate_tikz_picture(
+        process_image(image, settings).contours, image.shape, options
+    )
+
+    # The recreated classic mode must be shorter than the old raw-polyline output.
+    assert len(classic.tikz_code) < len(raw)
 
 
 def test_vector_mode_uses_vector_object_pipeline() -> None:

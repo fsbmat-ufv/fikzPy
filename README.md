@@ -124,7 +124,9 @@ No code was copied from these projects.
 Raster images need a raster-to-vector step before TikZ can be generated. The
 GUI exposes the three primary tracing modes:
 
-- `Classic`: stable line-art tracing, kept as the rollback path.
+- `Classic`: stable line-art tracing, fitted to compact `\draw` lines and cubic
+  Bezier curves (no fill) -- a pencil-over-image style optimized for short,
+  editable code.
 - `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
   This is the highest visual-fidelity mode. The first SVG-to-TikZ conversion is
   post-processed into layered `\draw[fikzInk]` and `\draw[fikzErase]` commands,
@@ -135,14 +137,24 @@ The codebase also keeps experimental centerline modes such as `Vector`,
 `Fidelidade`, and `Smooth` for tests and future work, but they are no longer
 shown in the main GUI selector.
 
-The centerline backends follow this general sequence:
+The `Classic` backend reads the drawing the way a person would, so each pencil
+stroke stays whole:
 
 1. threshold dark ink;
-2. skeletonize strokes;
-3. trace open and closed paths;
-4. smooth pixel stair-stepping;
-5. simplify paths;
-6. emit editable TikZ.
+2. skeletonize strokes to a one-pixel centerline;
+3. clean 8-connected staircase corners (topology-preserving), removing the
+   thinning artefacts that otherwise shatter a line into fragments;
+4. split the skeleton into a small graph of segments between real junctions;
+5. prune short spurs and link the segments that continue straight through a
+   junction, so crossing strokes stay complete;
+6. round gentle corners with corner-preserving smoothing while keeping sharp
+   corners crisp (star tips, box corners), so curves stop looking faceted;
+7. fit each stroke to a few cubic Bezier curves (and detect circles, ellipses
+   and rectangles);
+8. emit editable TikZ (`\draw` lines and Bezier curves, no fill).
+
+The complete-stroke tracer lives in `fikzpy/core/skeleton_strokes.py` and is
+covered by `tests/test_skeleton_strokes.py`.
 
 The `Visual` backend follows a different sequence:
 
@@ -160,6 +172,11 @@ fidelity rather than transparent-background compositing.
 
 Use `Visual` when the PDF must look close to the source image. Use `Classic`
 when the priority is editable mathematical strokes.
+
+The `Classic` backend draws like a pencil over the image: it traces stroke
+centerlines and fits them to a small number of `\draw` lines and cubic Bezier
+curves, with no fill. The result is compact, direct TikZ -- a union of strokes
+and curves rather than long raw polylines -- that stays easy to edit by hand.
 
 ## Comparison Example
 

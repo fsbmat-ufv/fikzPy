@@ -167,6 +167,9 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
     elif vector_config.mode in {"classic", "smooth", "vector", "fidelity"}:
         is_vector_like = vector_config.mode in {"vector", "fidelity"}
         is_fidelity = vector_config.mode == "fidelity"
+        is_classic = vector_config.mode == "classic"
+        diagonal = float(np.hypot(gray.shape[0], gray.shape[1]))
+        stroke_spur_length = max(6.0, 0.02 * diagonal)
         effective_min_path_length = (
             min(settings.min_path_length, 1 if is_fidelity else 2)
             if is_vector_like
@@ -193,8 +196,14 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
                 threshold_offset=2 if is_fidelity else 3 if vector_config.mode == "vector" else 9,
                 close_gaps=is_vector_like,
                 closing_kernel_size=3,
-                skeleton_method="skimage" if is_vector_like else "zhang-suen",
+                skeleton_method="skimage" if (is_vector_like or is_classic) else "zhang-suen",
                 multiscale_skeleton=is_vector_like,
+                complete_strokes=is_classic,
+                spur_length=stroke_spur_length,
+                link_max_angle_deg=60.0,
+                min_stroke_length=stroke_spur_length,
+                corner_smoothing=2 if is_classic else 0,
+                corner_threshold_cos=-0.7,
             ),
             preprocessing=vector_config.preprocessing if vector_config.mode == "smooth" else None,
         )
