@@ -1,0 +1,87 @@
+{
+  "config": {
+    "connectivity": 8,
+    "enable_spur_pruning": true,
+    "maximum_endpoint_distance": 2.0,
+    "maximum_merge_angle": 25.0,
+    "maximum_pruning_ratio": 0.05,
+    "merge_nearby_endpoints": false,
+    "minimum_path_length": 2,
+    "minimum_spur_length": 4,
+    "preserve_cycles": true,
+    "preserve_small_details": true,
+    "relative_spur_length": 0.04,
+    "simplification_tolerance": 0.75,
+    "simplify_pixel_paths": true,
+    "skeleton_method": "skimage_skeletonize",
+    "strict_topology_validation": false,
+    "use_sknw_if_available": false
+  },
+  "images": [
+    {
+      "category": "line_art",
+      "components": 1,
+      "cycles": 1,
+      "endpoints": 5,
+      "graph_backend": "fallback",
+      "image": "geometric_diagram.png",
+      "junctions": 117,
+      "paths": 6,
+      "points_after_simplification": 21,
+      "points_before_simplification": 466,
+      "skeleton_pixels": 787,
+      "skeletonization_backend": "zhang_suen_fallback",
+      "spurs_removed": 0,
+      "threshold": 224.0,
+      "threshold_method": "global_sweep",
+      "warnings": []
+    },
+    {
+      "category": "line_art",
+      "components": 1,
+      "cycles": 1,
+      "endpoints": 4,
+      "graph_backend": "fallback",
+      "image": "line_art_bw.png",
+      "junctions": 232,
+      "paths": 5,
+      "points_after_simplification": 34,
+      "points_before_simplification": 256,
+      "skeleton_pixels": 459,
+      "skeletonization_backend": "zhang_suen_fallback",
+      "spurs_removed": 0,
+      "threshold": 224.0,
+      "threshold_method": "global_sweep",
+      "warnings": []
+    },
+    {
+      "category": "line_art",
+      "components": 1,
+      "cycles": 1,
+      "endpoints": 4,
+      "graph_backend": "fallback",
+      "image": "noisy_grayscale.png",
+      "junctions": 336,
+      "paths": 5,
+      "points_after_simplification": 30,
+      "points_before_simplification": 183,
+      "skeleton_pixels": 537,
+      "skeletonization_backend": "zhang_suen_fallback",
+      "spurs_removed": 0,
+      "threshold": 160.0,
+      "threshold_method": "global_sweep",
+      "warnings": []
+    }
+  ],
+  "purpose": "diagnostic centerline baseline for isolated Issue 4 pipeline",
+  "skipped_non_line_art_images": [
+    {
+      "category": "binary_outline",
+      "image": "silhouette_bw.png"
+    },
+    {
+      "category": "color_regions",
+      "image": "simple_color.png"
+    }
+  ]
+}
