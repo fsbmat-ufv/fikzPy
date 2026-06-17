@@ -14,6 +14,7 @@ from fikzpy.core.contour_merging import merge_nearby_contours
 from fikzpy.core.contour_smoothing import smooth_contours
 from fikzpy.core.stroke_tracer import StrokeTracingSettings, trace_line_art_strokes
 from fikzpy.core.vectorization_config import config_for_mode
+from fikzpy.core.visual_pipeline import VisualTracingSettings, trace_visual_contours
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,25 @@ def make_reconstruction(
     return canvas
 
 
+def make_filled_reconstruction(
+    image_shape: tuple[int, ...],
+    contours: list[Contour],
+    *,
+    fill_color_bgr: tuple[int, int, int] = (0, 0, 0),
+) -> np.ndarray:
+    """Draw filled visual ink contours on a white canvas."""
+    height, width = image_shape[:2]
+    canvas = np.full((height, width, 3), 255, dtype=np.uint8)
+    polylines = [
+        np.rint(contour.points).astype(np.int32).reshape(-1, 1, 2)
+        for contour in contours
+        if contour.is_drawable and len(contour.points) >= 3
+    ]
+    if polylines:
+        cv2.drawContours(canvas, polylines, -1, fill_color_bgr, thickness=cv2.FILLED, lineType=cv2.LINE_AA)
+    return canvas
+
+
 def process_image(image: np.ndarray, settings: ProcessingSettings | None = None) -> ProcessingResult:
     """Run the full image processing pipeline."""
     settings = settings or ProcessingSettings()
@@ -135,6 +155,15 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
+    elif vector_config.mode == "visual":
+        visual_result = trace_visual_contours(
+            image,
+            visual_settings_from_processing(settings),
+        )
+        contours = visual_result.contours
+        ink_mask = visual_result.ink_mask
+        skeleton = visual_result.ink_mask
+        edges = visual_result.ink_mask
     elif vector_config.mode in {"classic", "smooth", "vector", "fidelity"}:
         is_vector_like = vector_config.mode in {"vector", "fidelity"}
         is_fidelity = vector_config.mode == "fidelity"
@@ -188,7 +217,10 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
         raise ValueError(f"Unsupported vectorization mode: {vector_config.mode}")
 
     overlay = make_overlay(image, contours)
-    reconstruction = make_reconstruction(image.shape, contours)
+    if vector_config.mode == "visual":
+        reconstruction = make_filled_reconstruction(image.shape, contours)
+    else:
+        reconstruction = make_reconstruction(image.shape, contours)
 
     return ProcessingResult(
         original_bgr=image,
@@ -206,6 +238,18 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
 def process_image_file(path: str | Path, settings: ProcessingSettings | None = None) -> ProcessingResult:
     """Load an image and run the full processing pipeline."""
     return process_image(load_image(path), settings)
+
+
+def visual_settings_from_processing(settings: ProcessingSettings) -> VisualTracingSettings:
+    """Map existing UI controls to visual tracing settings."""
+    simplify_px = max(0.05, min(2.5, float(settings.simplify_epsilon) * 60.0))
+    return VisualTracingSettings(
+        dark_threshold=settings.line_art_threshold,
+        denoise_h=max(0.0, float(settings.smoothing)),
+        close_kernel_size=max(1, 2 * int(settings.stroke_smoothing) + 1),
+        contour_simplify_px=simplify_px,
+        bezier_error_px=max(0.1, simplify_px * 2.0),
+    )
 
 
 def _draw_contours(

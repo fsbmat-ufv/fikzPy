@@ -13,6 +13,10 @@ fikzPy is intentionally modular:
 - `fikzpy.core.preprocessing` applies optional denoising and morphology.
 - `fikzpy.core.stroke_tracer` extracts ink masks, skeletonizes line art, and
   traces open strokes for drawings with internal details.
+- `fikzpy.core.visual_pipeline` traces filled ink shapes for the high-fidelity
+  Visual mode and converts them through SVG/svg2tikz.
+- `fikzpy.core.visual_postprocessor` converts the svg2tikz monolithic filled
+  path into smaller layered `\draw` commands while preserving cubic Beziers.
 - `fikzpy.core.primitive_detection` contains hooks for semantic TikZ shapes.
 - `fikzpy.core.bezier_fit` converts simplified polylines into cubic Bezier
   segments when requested.
@@ -47,6 +51,13 @@ python scripts/build_exe.py
 `Classic` preserves the stable line-art behavior. The legacy internal name
 `line_art` is still accepted as an alias for `classic`.
 
+`Visual` is the current high-fidelity backend. It traces filled ink areas,
+converts them to TikZ with `svg2tikz`, then post-processes the result into
+layered `\draw[fikzInk]` and `\draw[fikzErase]` commands. This keeps the PDF
+very close to the source image while making the code easier to inspect than the
+original one-command `\path[fill=..., even odd rule]` output. The erase layers
+are intended for the normal white standalone page background.
+
 `Smooth` is experimental and intentionally modular:
 
 - `preprocessing.py` applies optional bilateral/gaussian filtering and mask
@@ -66,14 +77,12 @@ strokes.
 Future optional backends can include:
 
 - Inkscape Trace Bitmap or potrace for raster-to-SVG conversion.
-- `svg2tikz` for SVG-to-TikZ conversion after the raster image has already been
-  vectorized.
 - A dedicated curve-fitting pass for fewer but smoother Bezier paths.
 
 ## Rollback Strategy
 
-The GUI exposes `Classic`, `Smooth`, and `Contornos` in the existing mode combo
-box. Select `Classic` to return to the pre-smooth vectorization behavior.
+The GUI exposes `Classic`, `Visual`, and `Contornos` in the existing mode combo
+box. Select `Classic` to return to the stable editable-stroke behavior.
 
 The Git branch `improve-vectorization-v1` keeps the experimental work isolated
 from `master`, and each feature is committed separately for easy rollback.

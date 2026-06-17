@@ -102,6 +102,11 @@ class VectorizationConfig:
         """Return a high-fidelity preset that favors detail preservation."""
         return cls(mode="fidelity")
 
+    @classmethod
+    def visual(cls) -> "VectorizationConfig":
+        """Return a visual-fidelity preset based on filled ink shapes."""
+        return cls(mode="visual")
+
 
 def config_for_mode(mode: str) -> VectorizationConfig:
     """Return a vectorization configuration for a public mode name."""
@@ -112,6 +117,8 @@ def config_for_mode(mode: str) -> VectorizationConfig:
         return VectorizationConfig(mode="vector")
     if normalized in {"fidelity", "high_fidelity", "high-fidelity", "fidelidade"}:
         return VectorizationConfig.fidelity()
+    if normalized in {"visual", "svg_trace", "svg-trace", "visual_fidelity", "visual-fidelity"}:
+        return VectorizationConfig.visual()
     if normalized == "smooth":
         return VectorizationConfig.smooth()
     if normalized == "contours":

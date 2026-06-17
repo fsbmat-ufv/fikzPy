@@ -26,5 +26,7 @@ def test_config_for_mode_keeps_line_art_alias() -> None:
     assert config_for_mode("vector").mode == "vector"
     assert config_for_mode("fidelity").mode == "fidelity"
     assert config_for_mode("fidelidade").mode == "fidelity"
+    assert config_for_mode("visual").mode == "visual"
+    assert config_for_mode("svg_trace").mode == "visual"
     assert config_for_mode("smooth").mode == "smooth"
     assert config_for_mode("contours").mode == "contours"

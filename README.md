@@ -47,13 +47,15 @@ fikzpy
 ## Basic Workflow
 
 1. Open an image with **Arquivo > Abrir imagem**.
-2. Choose the vectorization mode. `Classic` preserves the stable line-art
-   backend, `Smooth` enables the experimental cleanup/smoothing backend, and
-   `Contornos` keeps the Canny contour pipeline.
+2. Choose the vectorization mode. The GUI exposes three primary modes:
+   `Classic` for stable editable strokes, `Visual` for maximum visual
+   similarity with filled TikZ paths, and `Contornos` for the Canny contour
+   pipeline.
 3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
-   width, line color, and Bezier usage in the parameter panel. In `Contornos`
-   mode, the Canny thresholds are also used. In `Smooth` mode, Bezier output is
-   enabled automatically.
+   width, line color, and Bezier usage in the parameter panel. In `Visual`
+   mode, ink threshold, stroke smoothing, smoothing, and simplification affect
+   the filled-path trace. In `Contornos` mode, the Canny thresholds are also
+   used.
 4. Review the generated TikZ code on the right.
 5. Toggle the preview between the original image, contour overlay, and
    reconstructed drawing.
@@ -119,14 +121,21 @@ No code was copied from these projects.
 
 ## Vectorization Notes
 
-Raster images need a raster-to-vector step before TikZ can be generated. For
-line drawings, fikzPy provides two stroke-tracing modes:
+Raster images need a raster-to-vector step before TikZ can be generated. The
+GUI exposes the three primary tracing modes:
 
 - `Classic`: stable line-art tracing, kept as the rollback path.
-- `Smooth`: experimental preprocessing, conservative contour merging, path
-  smoothing, and Bezier generation.
+- `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
+  This is the highest visual-fidelity mode. The first SVG-to-TikZ conversion is
+  post-processed into layered `\draw[fikzInk]` and `\draw[fikzErase]` commands,
+  preserving cubic Bezier segments while avoiding one huge monolithic `\path`.
+- `Contornos`: classic Canny/contour tracing for geometric or filled images.
 
-The line-art backend follows this general sequence:
+The codebase also keeps experimental centerline modes such as `Vector`,
+`Fidelidade`, and `Smooth` for tests and future work, but they are no longer
+shown in the main GUI selector.
+
+The centerline backends follow this general sequence:
 
 1. threshold dark ink;
 2. skeletonize strokes;
@@ -135,10 +144,22 @@ The line-art backend follows this general sequence:
 5. simplify paths;
 6. emit editable TikZ.
 
-`svg2tikz` is a strong candidate for a future optional backend, but it converts
-existing SVG paths to TikZ. It does not by itself solve JPEG/PNG recognition, so
-it should be paired with an SVG vectorizer such as Inkscape Trace Bitmap or
-potrace.
+The `Visual` backend follows a different sequence:
+
+1. enhance local contrast and threshold likely black ink;
+2. ignore strongly chromatic diagnostic annotations when possible;
+3. trace the outer boundary of the ink shapes;
+4. fit SVG-style cubic paths;
+5. convert the SVG path to TikZ with `svg2tikz`;
+6. split the monolithic filled path into grouped `\draw` commands.
+
+The Visual post-processor keeps the filled-ink representation because that is
+what preserves the printed PDF most faithfully. Holes are represented as white
+erase layers on the standalone white page, so this mode is optimized for visual
+fidelity rather than transparent-background compositing.
+
+Use `Visual` when the PDF must look close to the source image. Use `Classic`
+when the priority is editable mathematical strokes.
 
 ## Comparison Example
 
@@ -147,6 +168,8 @@ The folder `examples/comparison/` contains a reproducible before/after sample:
 - `original.jpg`;
 - `classic_output.tex` and `classic_output.pdf`;
 - `smooth_output.tex` and `smooth_output.pdf`;
+- `visual_dinosaur_output.tex`;
+- `visual_cara_output.tex`;
 - `notes.md` with path and point counts.
 
 To return to the previous behavior in the GUI, select `Classic` in the mode

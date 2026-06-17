@@ -19,8 +19,9 @@ python -m fikzpy.main
 1. Choose **Arquivo > Abrir imagem**.
 2. Choose the vectorization mode:
    - `Classic` for the stable line-art behavior;
-   - `Smooth` for experimental filtering, endpoint merging, smoothing, and
-     Bezier paths;
+   - `Visual` for maximum visual fidelity with filled TikZ paths generated
+     through SVG-style tracing, `svg2tikz`, and a post-processing pass that
+     emits layered `\draw` commands;
    - `Contornos` for the classic Canny contour pipeline.
 3. Adjust the parameters:
    - ink threshold for faint strokes;
@@ -32,6 +33,9 @@ python -m fikzpy.main
    - line width;
    - line color;
    - Bezier mode.
+
+   In `Visual` mode, ink threshold, stroke smoothing, smoothing, and
+   simplification affect the filled-path trace and the generated PDF.
 4. Click **Gerar TikZ** if automatic regeneration is not enough.
 5. Use **Visualizacao** to compare the original, overlay, and reconstructed
    drawing.
@@ -45,7 +49,7 @@ or select a manual executable path. Then choose **Compilar e visualizar PDF**.
 If LaTeX is not installed, export the `.tex` file and compile it later in a
 configured LaTeX environment.
 
-## Compare Classic And Smooth
+## Compare Modes
 
 Use the files in `examples/comparison/` as a reproducible comparison:
 
@@ -54,8 +58,13 @@ Use the files in `examples/comparison/` as a reproducible comparison:
 - `classic_output.pdf`;
 - `smooth_output.tex`;
 - `smooth_output.pdf`;
+- `visual_dinosaur_output.tex`;
+- `visual_cara_output.tex`;
 - `notes.md`.
 
-`Classic` is the rollback mode. `Smooth` should reduce fragmented strokes and
-angular paths, but it can still lose very faint details if parameters are too
-aggressive.
+`Classic` is the rollback mode. `Visual` should be used when fidelity matters
+more than centerline editability; it traces the visible ink as filled paths
+rather than as stroke centerlines, then groups the svg2tikz output into
+`fikzInk` and `fikzErase` `\draw` layers. The erase layers assume the normal
+white standalone page background. `Contornos` is useful for images where Canny
+edge contours are a better fit.
