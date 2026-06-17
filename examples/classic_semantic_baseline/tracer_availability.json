@@ -1,0 +1,35 @@
+{
+  "purpose": "diagnostic availability report for optional raster tracers",
+  "tracers": [
+    {
+      "available": false,
+      "backend": "cli",
+      "cli_available": false,
+      "executable_path": null,
+      "python_module_available": false,
+      "reason": "potrace executable was not found",
+      "tracer": "potrace",
+      "version": null
+    },
+    {
+      "available": false,
+      "backend": "cli",
+      "cli_available": false,
+      "executable_path": null,
+      "python_module_available": false,
+      "reason": "autotrace executable was not found",
+      "tracer": "autotrace",
+      "version": null
+    },
+    {
+      "available": false,
+      "backend": null,
+      "cli_available": false,
+      "executable_path": null,
+      "python_module_available": false,
+      "reason": "vtracer Python module and executable were not found",
+      "tracer": "vtracer",
+      "version": null
+    }
+  ]
+}
