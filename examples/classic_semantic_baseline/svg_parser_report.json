@@ -1,0 +1,47 @@
+{
+  "samples": [
+    {
+      "backend": "stdlib_elementtree",
+      "deterministic": true,
+      "elements": 3,
+      "hash": "f7affe8dddc1e2f35aa70439aefaa00fa78b69fb72094490c89149544a28649b",
+      "inherited_styles": 2,
+      "name": "potrace_synthetic",
+      "primitive_types": {
+        "closed_shape": 2
+      },
+      "primitives": 2,
+      "transforms": 1,
+      "warnings": []
+    },
+    {
+      "backend": "stdlib_elementtree",
+      "deterministic": true,
+      "elements": 4,
+      "hash": "6318d3798e02c0afea01f2b724b88cd8b94ca9c36c8b6aaaa009633673d1e462",
+      "inherited_styles": 1,
+      "name": "autotrace_synthetic",
+      "primitive_types": {
+        "bezier": 1,
+        "line": 1
+      },
+      "primitives": 2,
+      "transforms": 0,
+      "warnings": []
+    },
+    {
+      "backend": "stdlib_elementtree",
+      "deterministic": true,
+      "elements": 4,
+      "hash": "cb6bc47b9f7da78cc619ea4419bfb5255d164d27c77714ee6374a0c61306e187",
+      "inherited_styles": 3,
+      "name": "vtracer_synthetic",
+      "primitive_types": {
+        "closed_shape": 2
+      },
+      "primitives": 2,
+      "transforms": 0,
+      "warnings": []
+    }
+  ]
+}
