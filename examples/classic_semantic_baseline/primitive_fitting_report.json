@@ -1,0 +1,208 @@
+{
+  "cases": [
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 0,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier"
+      ],
+      "case": "line",
+      "confidence": 1.0,
+      "determinism": true,
+      "fitting_error": 0.0,
+      "input_points": 24,
+      "normalized_error": 0.0,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.041667,
+      "selected_kind": "line",
+      "warnings": []
+    },
+    {
+      "alternative_kind": "ellipse",
+      "ambiguity": true,
+      "bezier_count": 0,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier",
+        "closed_freeform"
+      ],
+      "case": "circle",
+      "confidence": 0.964375,
+      "determinism": true,
+      "fitting_error": 6.217248937900877e-15,
+      "input_points": 64,
+      "normalized_error": 2.7476618026966064e-16,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.015625,
+      "selected_kind": "circle",
+      "warnings": [
+        "ambiguous"
+      ]
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 0,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier",
+        "closed_freeform"
+      ],
+      "case": "ellipse",
+      "confidence": 0.967076,
+      "determinism": true,
+      "fitting_error": 2.442490654175344e-15,
+      "input_points": 80,
+      "normalized_error": 1.4294189460001874e-16,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.0125,
+      "selected_kind": "ellipse",
+      "warnings": []
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 0,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier"
+      ],
+      "case": "polyline",
+      "confidence": 1.0,
+      "determinism": true,
+      "fitting_error": 0.0,
+      "input_points": 5,
+      "normalized_error": 0.0,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.2,
+      "selected_kind": "polyline",
+      "warnings": []
+    },
+    {
+      "alternative_kind": "polyline",
+      "ambiguity": true,
+      "bezier_count": 3,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier"
+      ],
+      "case": "cubic_bezier",
+      "confidence": 0.592861,
+      "determinism": true,
+      "fitting_error": 0.02974681483035239,
+      "input_points": 40,
+      "normalized_error": 0.011614179940649774,
+      "output_primitive_count": 3,
+      "reduction_ratio": 0.075,
+      "selected_kind": "bezier",
+      "warnings": [
+        "ambiguous"
+      ]
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 0,
+      "candidates": [
+        "point",
+        "line",
+        "circle",
+        "ellipse",
+        "polyline",
+        "bezier",
+        "closed_freeform"
+      ],
+      "case": "closed_freeform",
+      "confidence": 1.0,
+      "determinism": true,
+      "fitting_error": 0.0,
+      "input_points": 5,
+      "normalized_error": 0.0,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.2,
+      "selected_kind": "closed_freeform",
+      "warnings": []
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": true,
+      "bezier_count": 0,
+      "candidates": [
+        "group"
+      ],
+      "case": "potrace_synthetic",
+      "confidence": 0.948738,
+      "determinism": true,
+      "fitting_error": 1.0172388439144697e-05,
+      "input_points": 32,
+      "normalized_error": 1.438592969236571e-07,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.03125,
+      "selected_kind": "group",
+      "warnings": [
+        "ambiguous",
+        "child_ambiguous"
+      ]
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 1,
+      "candidates": [
+        "group"
+      ],
+      "case": "autotrace_synthetic",
+      "confidence": 1.0,
+      "determinism": true,
+      "fitting_error": 0.0,
+      "input_points": 4,
+      "normalized_error": 0.0,
+      "output_primitive_count": 1,
+      "reduction_ratio": 0.25,
+      "selected_kind": "group",
+      "warnings": []
+    },
+    {
+      "alternative_kind": null,
+      "ambiguity": false,
+      "bezier_count": 0,
+      "candidates": [
+        "group"
+      ],
+      "case": "vtracer_synthetic",
+      "confidence": 1.0,
+      "determinism": true,
+      "fitting_error": 0.0,
+      "input_points": 6,
+      "normalized_error": 0.0,
+      "output_primitive_count": 2,
+      "reduction_ratio": 0.333333,
+      "selected_kind": "group",
+      "warnings": []
+    }
+  ],
+  "issue": "Issue 7",
+  "report": "primitive_fitting"
+}
