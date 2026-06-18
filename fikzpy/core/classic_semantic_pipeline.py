@@ -19,6 +19,10 @@ from fikzpy.core.filled_region_extraction import FilledRegionExtractionResult
 from fikzpy.core.filled_region_extraction import extract_filled_regions
 from fikzpy.core.geometry_optimization import GeometryOptimizationResult, optimize_fit_results
 from fikzpy.core.image_classifier import ImageCategory, ImageClassificationResult, classify_image
+from fikzpy.core.lineart_continuity import LineArtBalanceResult, LineArtContinuityDecision, LineArtContinuityMetrics
+from fikzpy.core.lineart_continuity import OutlineRecoveryResult, compute_lineart_continuity_metrics
+from fikzpy.core.lineart_continuity import decide_lineart_outline_recovery, extract_outline_strokes
+from fikzpy.core.lineart_continuity import render_polyline_primitives_mask, validate_lineart_balance
 from fikzpy.core.mixed_monochrome_pipeline import ForegroundLayerSplit, MixedMonochromeResult
 from fikzpy.core.mixed_monochrome_pipeline import extract_mixed_monochrome_primitives, extract_thin_strokes
 from fikzpy.core.mixed_monochrome_pipeline import split_foreground_layers
@@ -32,6 +36,27 @@ from fikzpy.core.classic_pipeline_config import ClassicSemanticConfig, ClassicVa
 
 class ClassicSemanticPipelineError(RuntimeError):
     """Raised when the semantic Classic pipeline cannot produce a result."""
+
+
+@dataclass(frozen=True)
+class LineArtExtractionResult:
+    """Diagnostic wrapper for the balanced LINE_ART extraction path."""
+
+    thin_strokes: Any
+    continuity_metrics: LineArtContinuityMetrics
+    decision: LineArtContinuityDecision
+    outline_recovery: OutlineRecoveryResult | None
+    warnings: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic diagnostics for the balanced LINE_ART extraction."""
+        return {
+            "thin_strokes": self.thin_strokes.to_dict() if hasattr(self.thin_strokes, "to_dict") else None,
+            "continuity_metrics": self.continuity_metrics.to_dict(),
+            "decision": self.decision.to_dict(),
+            "outline_recovery": self.outline_recovery.to_dict() if self.outline_recovery is not None else None,
+            "warnings": list(self.warnings),
+        }
 
 
 @dataclass(frozen=True)
@@ -115,6 +140,13 @@ class ClassicSemanticMetrics:
     filled_region_recall: float
     thin_stroke_recall: float
     dark_mass_preservation_ratio: float
+    tikz_fill_commands: int = 0
+    outline_recovery_count: int = 0
+    white_cutout_count: int = 0
+    edge_recall: float = 1.0
+    contour_coverage: float = 1.0
+    fragmentation_ratio: float = 0.0
+    lineart_regression_flags: tuple[str, ...] = ()
     processing_time_ms: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,6 +168,13 @@ class ClassicSemanticMetrics:
             "filled_region_recall": self.filled_region_recall,
             "thin_stroke_recall": self.thin_stroke_recall,
             "dark_mass_preservation_ratio": self.dark_mass_preservation_ratio,
+            "tikz_fill_commands": self.tikz_fill_commands,
+            "outline_recovery_count": self.outline_recovery_count,
+            "white_cutout_count": self.white_cutout_count,
+            "edge_recall": self.edge_recall,
+            "contour_coverage": self.contour_coverage,
+            "fragmentation_ratio": self.fragmentation_ratio,
+            "lineart_regression_flags": list(self.lineart_regression_flags),
             "processing_time_ms": self.processing_time_ms,
         }
 
@@ -269,6 +308,36 @@ class ClassicSemanticPipeline:
             warnings.extend(tikz_warnings)
             stages.append(_stage("export", {"draw_commands": tikz_result.metrics.draw_commands}, tikz_warnings))
 
+            lineart_balance: LineArtBalanceResult | None = None
+            if isinstance(extraction, LineArtExtractionResult):
+                lineart_balance = validate_lineart_balance(
+                    preprocessing.binary_mask,
+                    optimized_primitives,
+                    extraction.continuity_metrics,
+                    max_filled_area_ratio_for_lineart=self.config.max_filled_area_ratio_for_lineart,
+                    max_white_cutout_ratio_for_lineart=self.config.max_white_cutout_ratio_for_lineart,
+                    lineart_min_edge_recall=self.config.lineart_min_edge_recall,
+                    lineart_min_foreground_recall=self.config.lineart_min_foreground_recall,
+                    lineart_min_contour_coverage=self.config.lineart_min_contour_coverage,
+                    lineart_max_fragmentation_ratio=self.config.lineart_max_fragmentation_ratio,
+                    lineart_preserve_external_contour=self.config.lineart_preserve_external_contour,
+                    reject_overfilled_lineart=self.config.reject_overfilled_lineart,
+                    reject_underdrawn_lineart=self.config.reject_underdrawn_lineart,
+                )
+                lineart_warnings = [
+                    ClassicSemanticWarning(flag, f"Line-art balance flag: {flag}", "lineart_balance")
+                    for flag in lineart_balance.flags
+                ]
+                warnings.extend(lineart_warnings)
+                stages.append(
+                    _stage(
+                        "lineart_balance",
+                        {"accepted": lineart_balance.accepted, "flags": list(lineart_balance.flags)},
+                        lineart_warnings,
+                        status=ClassicPipelineStatus.ACCEPTED if lineart_balance.accepted else ClassicPipelineStatus.REJECTED,
+                    )
+                )
+
             validation_result: VisualValidationResult | None = None
             if self.config.validation_policy is not ClassicValidationPolicy.DISABLED:
                 validation_result = validate_semantic_output(
@@ -291,7 +360,7 @@ class ClassicSemanticPipeline:
                     )
                 )
 
-            accepted, rejection_reasons = self._acceptance(validation_result, tikz_result)
+            accepted, rejection_reasons = self._acceptance(validation_result, tikz_result, lineart_balance)
             status = ClassicPipelineStatus.ACCEPTED if accepted else ClassicPipelineStatus.REJECTED
             if not accepted and self.config.fallback_policy is ClassicFallbackPolicy.LEGACY_EXPLICIT:
                 warnings.append(
@@ -311,6 +380,8 @@ class ClassicSemanticPipeline:
                 optimized_primitives,
                 tikz_result,
                 validation_result,
+                extraction,
+                lineart_balance,
             )
             payload = {
                 "strategy": decision.strategy.value,
@@ -474,13 +545,59 @@ class ClassicSemanticPipeline:
         )
         strategy = decision.strategy
         if strategy is ClassicPipelineStrategy.LINE_ART:
-            thin = extract_thin_strokes(mask, self.config.centerline_config)
+            thin = extract_thin_strokes(mask, self.config.centerline_config, stroke_width=self.config.line_art_stroke_width)
+            continuity_metrics = compute_lineart_continuity_metrics(
+                mask,
+                thin.centerline_result,
+                component_connectivity=self.config.component_connectivity,
+            )
+            lineart_decision = decide_lineart_outline_recovery(
+                continuity_metrics,
+                min_edge_recall=self.config.lineart_min_edge_recall,
+                min_foreground_recall=self.config.lineart_min_foreground_recall,
+                min_contour_coverage=self.config.lineart_min_contour_coverage,
+                max_fragmentation_ratio=self.config.lineart_max_fragmentation_ratio,
+                preserve_external_contour=self.config.lineart_preserve_external_contour,
+                trigger_when_centerline_fails=self.config.lineart_outline_recovery_when_centerline_fails,
+            )
+            primitives_list: list[Any] = list(thin.primitives)
+            outline_recovery: OutlineRecoveryResult | None = None
+            extraction_warnings: list[str] = []
+            final_continuity_metrics = continuity_metrics
+            if self.config.enable_lineart_outline_recovery and lineart_decision.needs_outline_recovery:
+                rendered_thin_mask = render_polyline_primitives_mask(thin.primitives, (mask.shape[1], mask.shape[0]))
+                outline_recovery = extract_outline_strokes(
+                    mask,
+                    rendered_thin_mask,
+                    stroke_width=self.config.lineart_recovery_stroke_width,
+                    simplification_tolerance=self.config.outline_recovery_simplification_tolerance,
+                    max_components=self.config.outline_recovery_max_components,
+                    component_connectivity=self.config.component_connectivity,
+                )
+                primitives_list.extend(outline_recovery.primitives)
+                extraction_warnings.extend(outline_recovery.warnings)
+                if outline_recovery.recovered_component_count > 0:
+                    extraction_warnings.append("lineart_outline_recovery_applied")
+                    final_rendered = render_polyline_primitives_mask(primitives_list, (mask.shape[1], mask.shape[0]))
+                    final_continuity_metrics = compute_lineart_continuity_metrics(
+                        mask,
+                        thin.centerline_result,
+                        component_connectivity=self.config.component_connectivity,
+                        rendered_override=final_rendered,
+                    )
+            extraction = LineArtExtractionResult(
+                thin_strokes=thin,
+                continuity_metrics=final_continuity_metrics,
+                decision=lineart_decision,
+                outline_recovery=outline_recovery,
+                warnings=tuple(extraction_warnings),
+            )
             group = PrimitiveGroup(
-                thin.primitives,
+                tuple(primitives_list),
                 name="thin_strokes",
                 metadata={"source_layer": "thin_stroke", "strategy": strategy.value},
             )
-            return thin, (group,) if thin.primitives else ()
+            return extraction, (group,) if primitives_list else ()
         if strategy is ClassicPipelineStrategy.BINARY_OUTLINE:
             filled = extract_filled_regions(mask, filled_config)
             group = PrimitiveGroup(
@@ -514,12 +631,16 @@ class ClassicSemanticPipeline:
         self,
         validation_result: VisualValidationResult | None,
         tikz_result: TikzExportResult,
+        lineart_balance: LineArtBalanceResult | None = None,
     ) -> tuple[bool, tuple[str, ...]]:
         reasons: list[str] = []
         if not tikz_result.code.strip() or tikz_result.metrics.draw_commands <= 0:
             reasons.append("empty_tikz_output")
+        if lineart_balance is not None:
+            reasons.extend(lineart_balance.rejection_reasons)
         if validation_result is None:
-            return not reasons, tuple(reasons)
+            deduped = tuple(dict.fromkeys(reasons))
+            return not deduped, deduped
         reasons.extend(validation_result.rejection_reasons)
         raster = validation_result.fidelity_score.raster_metrics
         if raster.filled_region_recall < self.config.minimum_filled_region_recall:
@@ -595,6 +716,9 @@ def _warnings_from_extraction(extraction: Any) -> list[ClassicSemanticWarning]:
             output.append(ClassicSemanticWarning("no_thin_strokes", "No thin strokes were extracted.", "extract"))
     if isinstance(extraction, FilledRegionExtractionResult) and extraction.region_count <= 0:
         output.append(ClassicSemanticWarning("no_filled_regions", "No filled regions were extracted.", "extract"))
+    if isinstance(extraction, LineArtExtractionResult):
+        for flag in extraction.decision.flags:
+            output.append(ClassicSemanticWarning(flag, f"Line-art continuity flag: {flag}", "extract"))
     return output
 
 
@@ -627,8 +751,18 @@ def _metrics(
     optimized: tuple[SemanticGeometry, ...],
     tikz_result: TikzExportResult,
     validation_result: VisualValidationResult | None,
+    extraction: Any | None = None,
+    lineart_balance: LineArtBalanceResult | None = None,
 ) -> ClassicSemanticMetrics:
     raster = validation_result.fidelity_score.raster_metrics if validation_result is not None else None
+    outline_recovery_count = 0
+    if isinstance(extraction, LineArtExtractionResult) and extraction.outline_recovery is not None:
+        outline_recovery_count = extraction.outline_recovery.recovered_component_count
+    white_cutout_count = lineart_balance.fill_metrics.white_cutout_count if lineart_balance is not None else 0
+    edge_recall = lineart_balance.continuity_metrics.edge_recall if lineart_balance is not None else 1.0
+    contour_coverage = lineart_balance.continuity_metrics.contour_coverage if lineart_balance is not None else 1.0
+    fragmentation_ratio = lineart_balance.continuity_metrics.skeleton_fragmentation if lineart_balance is not None else 0.0
+    lineart_regression_flags = lineart_balance.flags if lineart_balance is not None else ()
     return ClassicSemanticMetrics(
         input_image_size=(int(source.shape[1]), int(source.shape[0])),
         image_category=classification.category.value,
@@ -646,6 +780,13 @@ def _metrics(
         filled_region_recall=raster.filled_region_recall if raster is not None else 1.0,
         thin_stroke_recall=raster.thin_stroke_recall if raster is not None else 1.0,
         dark_mass_preservation_ratio=raster.dark_mass_preservation_ratio if raster is not None else 1.0,
+        tikz_fill_commands=tikz_result.metrics.filled_paths_written,
+        outline_recovery_count=outline_recovery_count,
+        white_cutout_count=white_cutout_count,
+        edge_recall=edge_recall,
+        contour_coverage=contour_coverage,
+        fragmentation_ratio=fragmentation_ratio,
+        lineart_regression_flags=lineart_regression_flags,
     )
 
 
@@ -722,6 +863,7 @@ __all__ = [
     "ClassicSemanticResult",
     "ClassicSemanticWarning",
     "FilledRegionExtractionError",
+    "LineArtExtractionResult",
     "detect_mixed_monochrome_image",
     "run_classic_semantic_pipeline",
 ]

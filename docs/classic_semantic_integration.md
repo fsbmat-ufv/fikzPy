@@ -197,6 +197,14 @@ Color-region handling is conservative. For complex color fidelity, Visual remain
 
 The semantic Classic route validates raster fidelity with the Issue 10 rasterizer, not mandatory PDF rendering. PDF rendering and broad benchmark documentation are reserved for later work.
 
+## LINE_ART Balance (Issue 11.6)
+
+The `LINE_ART` strategy now adds a balance layer documented separately in
+[`docs/classic_lineart_balanced_refinement.md`](classic_lineart_balanced_refinement.md):
+conservative continuity metrics, optional stroke-only outline recovery for
+fragmented centerlines, and an overfilled/underdrawn validator. See that
+document for the new configuration fields, metrics, and regression flags.
+
 ## Next Issue
 
 Issue 12 - Benchmark e documentação final.

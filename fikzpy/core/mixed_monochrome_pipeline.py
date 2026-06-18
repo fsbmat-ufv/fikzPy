@@ -222,6 +222,8 @@ def split_foreground_layers(
 def extract_thin_strokes(
     mask: np.ndarray,
     config: CenterlineConfig | None = None,
+    *,
+    stroke_width: float = 1.0,
 ) -> ThinStrokeExtractionResult:
     """Extract centerline polylines from a thin-stroke mask."""
     thin_mask = _normalize_mask(mask)
@@ -248,7 +250,7 @@ def extract_thin_strokes(
             PolylinePrimitive(
                 primitive.points,
                 closed=primitive.closed,
-                stroke=StrokeStyle(width=1.0),
+                stroke=StrokeStyle(width=stroke_width),
                 fill=None,
                 confidence=primitive.confidence,
                 error=primitive.error,

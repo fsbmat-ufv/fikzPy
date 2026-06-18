@@ -74,6 +74,21 @@ class ClassicSemanticConfig:
     filled_region_min_ratio: float = 0.22
     thin_stroke_max_width: float = 3.2
     component_connectivity: int = 8
+    line_art_stroke_width: float = 0.45
+    lineart_min_edge_recall: float = 0.35
+    lineart_min_foreground_recall: float = 0.55
+    lineart_min_contour_coverage: float = 0.55
+    lineart_max_fragmentation_ratio: float = 0.6
+    enable_lineart_outline_recovery: bool = True
+    lineart_outline_recovery_when_centerline_fails: bool = True
+    lineart_recovery_stroke_width: float = 0.45
+    lineart_preserve_external_contour: bool = True
+    reject_underdrawn_lineart: bool = True
+    reject_overfilled_lineart: bool = True
+    max_filled_area_ratio_for_lineart: float = 0.06
+    max_white_cutout_ratio_for_lineart: float = 0.03
+    outline_recovery_max_components: int = 24
+    outline_recovery_simplification_tolerance: float = 0.01
     preprocessing_config: PreprocessingConfig = field(default_factory=PreprocessingConfig)
     image_classifier_config: ImageClassifierConfig = field(default_factory=ImageClassifierConfig)
     centerline_config: CenterlineConfig = field(default_factory=CenterlineConfig)
@@ -108,6 +123,11 @@ class ClassicSemanticConfig:
             "strict",
             "debug",
             "save_intermediate_artifacts",
+            "enable_lineart_outline_recovery",
+            "lineart_outline_recovery_when_centerline_fails",
+            "lineart_preserve_external_contour",
+            "reject_underdrawn_lineart",
+            "reject_overfilled_lineart",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} must be a bool.")
@@ -119,6 +139,12 @@ class ClassicSemanticConfig:
             "minimum_filled_region_recall",
             "minimum_thin_stroke_recall",
             "filled_region_min_ratio",
+            "lineart_min_edge_recall",
+            "lineart_min_foreground_recall",
+            "lineart_min_contour_coverage",
+            "max_filled_area_ratio_for_lineart",
+            "max_white_cutout_ratio_for_lineart",
+            "outline_recovery_simplification_tolerance",
         ):
             value = float(getattr(self, name))
             if not isfinite(value) or value < 0.0 or value > 1.0:
@@ -133,6 +159,18 @@ class ClassicSemanticConfig:
         object.__setattr__(self, "thin_stroke_max_width", width)
         if self.component_connectivity not in {4, 8}:
             raise ValueError("component_connectivity must be 4 or 8.")
+        for name in ("line_art_stroke_width", "lineart_recovery_stroke_width"):
+            value = float(getattr(self, name))
+            if not isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive.")
+            object.__setattr__(self, name, value)
+        fragmentation = float(self.lineart_max_fragmentation_ratio)
+        if not isfinite(fragmentation) or fragmentation < 0.0:
+            raise ValueError("lineart_max_fragmentation_ratio must be finite and non-negative.")
+        object.__setattr__(self, "lineart_max_fragmentation_ratio", fragmentation)
+        if int(self.outline_recovery_max_components) < 1:
+            raise ValueError("outline_recovery_max_components must be positive.")
+        object.__setattr__(self, "outline_recovery_max_components", int(self.outline_recovery_max_components))
         if self.save_intermediate_artifacts and self.debug_output_dir is None:
             raise ValueError("debug_output_dir is required when save_intermediate_artifacts=True.")
 
@@ -171,6 +209,21 @@ class ClassicSemanticConfig:
             "filled_region_min_ratio": self.filled_region_min_ratio,
             "thin_stroke_max_width": self.thin_stroke_max_width,
             "component_connectivity": self.component_connectivity,
+            "line_art_stroke_width": self.line_art_stroke_width,
+            "lineart_min_edge_recall": self.lineart_min_edge_recall,
+            "lineart_min_foreground_recall": self.lineart_min_foreground_recall,
+            "lineart_min_contour_coverage": self.lineart_min_contour_coverage,
+            "lineart_max_fragmentation_ratio": self.lineart_max_fragmentation_ratio,
+            "enable_lineart_outline_recovery": self.enable_lineart_outline_recovery,
+            "lineart_outline_recovery_when_centerline_fails": self.lineart_outline_recovery_when_centerline_fails,
+            "lineart_recovery_stroke_width": self.lineart_recovery_stroke_width,
+            "lineart_preserve_external_contour": self.lineart_preserve_external_contour,
+            "reject_underdrawn_lineart": self.reject_underdrawn_lineart,
+            "reject_overfilled_lineart": self.reject_overfilled_lineart,
+            "max_filled_area_ratio_for_lineart": self.max_filled_area_ratio_for_lineart,
+            "max_white_cutout_ratio_for_lineart": self.max_white_cutout_ratio_for_lineart,
+            "outline_recovery_max_components": self.outline_recovery_max_components,
+            "outline_recovery_simplification_tolerance": self.outline_recovery_simplification_tolerance,
             "preprocessing_config": self.preprocessing_config.to_dict(),
             "image_classifier_config": dict(self.image_classifier_config.__dict__),
             "centerline_config": self.centerline_config.to_dict(),
