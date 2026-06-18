@@ -124,7 +124,8 @@ No code was copied from these projects.
 Raster images need a raster-to-vector step before TikZ can be generated. The
 GUI exposes the three primary tracing modes:
 
-- `Classic`: stable line-art tracing, kept as the rollback path.
+- `Classic`: semantic tracing for compact editable TikZ, using centerlines for
+  thin strokes and filled paths for dark regions.
 - `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
   This is the highest visual-fidelity mode. The first SVG-to-TikZ conversion is
   post-processed into layered `\draw[fikzInk]` and `\draw[fikzErase]` commands,
@@ -135,14 +136,14 @@ The codebase also keeps experimental centerline modes such as `Vector`,
 `Fidelidade`, and `Smooth` for tests and future work, but they are no longer
 shown in the main GUI selector.
 
-The centerline backends follow this general sequence:
+The Classic semantic backend follows this general sequence:
 
-1. threshold dark ink;
-2. skeletonize strokes;
-3. trace open and closed paths;
-4. smooth pixel stair-stepping;
-5. simplify paths;
-6. emit editable TikZ.
+1. classify and preprocess the image;
+2. choose line-art, binary-outline, color-region, or mixed-monochrome strategy;
+3. extract centerlines and/or filled regions as semantic primitives;
+4. fit and optimize primitives;
+5. export semantic TikZ;
+6. validate visual fidelity before accepting the result.
 
 The `Visual` backend follows a different sequence:
 
@@ -158,8 +159,9 @@ what preserves the printed PDF most faithfully. Holes are represented as white
 erase layers on the standalone white page, so this mode is optimized for visual
 fidelity rather than transparent-background compositing.
 
-Use `Visual` when the PDF must look close to the source image. Use `Classic`
-when the priority is editable mathematical strokes.
+Use `Visual` when the PDF must look close to a complex source image. Use
+`Classic` when the priority is compact semantic TikZ that remains editable.
+See `docs/classic_semantic_integration.md` for the integration details.
 
 ## Comparison Example
 
@@ -172,7 +174,7 @@ The folder `examples/comparison/` contains a reproducible before/after sample:
 - `visual_cara_output.tex`;
 - `notes.md` with path and point counts.
 
-To return to the previous behavior in the GUI, select `Classic` in the mode
+To use the semantic editable output in the GUI, select `Classic` in the mode
 combo box.
 
 ## Roadmap

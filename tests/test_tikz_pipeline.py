@@ -19,7 +19,7 @@ def _line_art_image() -> np.ndarray:
     return image
 
 
-def test_classic_mode_uses_contour_tikz_pipeline() -> None:
+def test_classic_mode_uses_semantic_tikz_pipeline() -> None:
     result = build_tikz_from_image(
         _line_art_image(),
         ProcessingSettings(vectorization_mode="classic"),
@@ -28,6 +28,8 @@ def test_classic_mode_uses_contour_tikz_pipeline() -> None:
 
     assert result.effective_mode == "classic"
     assert result.vector_objects == ()
+    assert result.classic_semantic_result is not None
+    assert "\\draw" in result.tikz_code
     assert "% FIKZPY VECTOR MODE" not in result.tikz_code
 
 
