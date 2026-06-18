@@ -19,6 +19,7 @@ from fikzpy.core.filled_region_extraction import FilledRegionExtractionResult
 from fikzpy.core.filled_region_extraction import extract_filled_regions
 from fikzpy.core.geometry_optimization import GeometryOptimizationResult, optimize_fit_results
 from fikzpy.core.image_classifier import ImageCategory, ImageClassificationResult, classify_image
+from fikzpy.core.lineart_diagnostics import LineArtDiagnosticsResult, analyze_line_art_mask
 from fikzpy.core.mixed_monochrome_pipeline import ForegroundLayerSplit, MixedMonochromeResult
 from fikzpy.core.mixed_monochrome_pipeline import extract_mixed_monochrome_primitives, extract_thin_strokes
 from fikzpy.core.mixed_monochrome_pipeline import split_foreground_layers
@@ -59,6 +60,7 @@ class ClassicPipelineDecision:
     dark_pixel_ratio: float
     colored_pixel_ratio: float
     edge_to_foreground_ratio: float
+    lineart_diagnostics: LineArtDiagnosticsResult | None = None
     warnings: tuple[ClassicSemanticWarning, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -72,6 +74,10 @@ class ClassicPipelineDecision:
             "dark_pixel_ratio": self.dark_pixel_ratio,
             "colored_pixel_ratio": self.colored_pixel_ratio,
             "edge_to_foreground_ratio": self.edge_to_foreground_ratio,
+            "line_art_confidence": self.lineart_diagnostics.line_art_confidence if self.lineart_diagnostics else 0.0,
+            "mixed_monochrome_confidence": self.lineart_diagnostics.mixed_monochrome_confidence if self.lineart_diagnostics else 0.0,
+            "binary_outline_confidence": self.lineart_diagnostics.binary_outline_confidence if self.lineart_diagnostics else 0.0,
+            "lineart_diagnostics": self.lineart_diagnostics.to_dict() if self.lineart_diagnostics is not None else None,
             "warnings": [warning.to_dict() for warning in self.warnings],
         }
 
@@ -104,8 +110,14 @@ class ClassicSemanticMetrics:
     strategy_used: str
     foreground_ratio: float
     dark_pixel_ratio: float
+    line_art_confidence: float
+    mixed_monochrome_confidence: float
+    binary_outline_confidence: float
     thin_stroke_primitives: int
     filled_region_primitives: int
+    filled_area_ratio: float
+    white_cutout_count: int
+    white_cutout_area_ratio: float
     raw_primitive_count: int
     fitted_primitive_count: int
     optimized_primitive_count: int
@@ -125,8 +137,14 @@ class ClassicSemanticMetrics:
             "strategy_used": self.strategy_used,
             "foreground_ratio": self.foreground_ratio,
             "dark_pixel_ratio": self.dark_pixel_ratio,
+            "line_art_confidence": self.line_art_confidence,
+            "mixed_monochrome_confidence": self.mixed_monochrome_confidence,
+            "binary_outline_confidence": self.binary_outline_confidence,
             "thin_stroke_primitives": self.thin_stroke_primitives,
             "filled_region_primitives": self.filled_region_primitives,
+            "filled_area_ratio": self.filled_area_ratio,
+            "white_cutout_count": self.white_cutout_count,
+            "white_cutout_area_ratio": self.white_cutout_area_ratio,
             "raw_primitive_count": self.raw_primitive_count,
             "fitted_primitive_count": self.fitted_primitive_count,
             "optimized_primitive_count": self.optimized_primitive_count,
@@ -291,7 +309,7 @@ class ClassicSemanticPipeline:
                     )
                 )
 
-            accepted, rejection_reasons = self._acceptance(validation_result, tikz_result)
+            accepted, rejection_reasons = self._acceptance(validation_result, tikz_result, decision)
             status = ClassicPipelineStatus.ACCEPTED if accepted else ClassicPipelineStatus.REJECTED
             if not accepted and self.config.fallback_policy is ClassicFallbackPolicy.LEGACY_EXPLICIT:
                 warnings.append(
@@ -383,6 +401,7 @@ class ClassicSemanticPipeline:
                 dark_pixel_ratio=metrics.dark_pixel_ratio,
                 colored_pixel_ratio=metrics.colored_pixel_ratio,
                 edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=None,
                 warnings=tuple(warnings),
             )
         if manual is not None and manual is not ClassicPipelineStrategy.AUTO:
@@ -395,6 +414,7 @@ class ClassicSemanticPipeline:
                 dark_pixel_ratio=metrics.dark_pixel_ratio,
                 colored_pixel_ratio=metrics.colored_pixel_ratio,
                 edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=None,
                 warnings=tuple(warnings),
             )
 
@@ -415,17 +435,49 @@ class ClassicSemanticPipeline:
                 dark_pixel_ratio=metrics.dark_pixel_ratio,
                 colored_pixel_ratio=metrics.colored_pixel_ratio,
                 edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=None,
                 warnings=tuple(warnings),
             )
 
+        lineart_config = self.config.lineart_config()
+        lineart_diagnostics = analyze_line_art_mask(preprocessing.binary_mask, lineart_config)
+        for diagnostic_warning in lineart_diagnostics.warnings:
+            warnings.append(ClassicSemanticWarning(str(diagnostic_warning), str(diagnostic_warning), "decide"))
         split = split_foreground_layers(
             preprocessing.binary_mask,
             filled_region_min_area=self.config.filled_region_min_area,
             filled_region_min_ratio=self.config.filled_region_min_ratio,
             thin_stroke_max_width=self.config.thin_stroke_max_width,
             component_connectivity=self.config.component_connectivity,
+            minimum_fill_ratio_for_filled_region=lineart_config.minimum_fill_ratio_for_filled_region,
+            minimum_compactness_for_filled_region=self.config.minimum_compactness_for_filled_region,
+            maximum_skeleton_ratio_for_filled_region=self.config.maximum_skeleton_ratio_for_filled_region,
+            prefer_lineart_when_ambiguous=self.config.prefer_lineart_when_ambiguous,
         )
-        if self.config.mixed_monochrome_enabled and split.filled_count > 0 and split.thin_count > 0:
+        lineart_preferred = (
+            self.config.prefer_lineart_when_ambiguous
+            and lineart_diagnostics.line_art_confidence >= 0.55
+            and lineart_diagnostics.solid_component_area_ratio <= 0.02
+        )
+        if lineart_preferred and split.filled_count <= 0:
+            return ClassicPipelineDecision(
+                strategy=ClassicPipelineStrategy.LINE_ART,
+                reason="line-art diagnostics favor centerline strokes",
+                split=split,
+                category=classification.category,
+                foreground_ratio=metrics.foreground_ratio,
+                dark_pixel_ratio=metrics.dark_pixel_ratio,
+                colored_pixel_ratio=metrics.colored_pixel_ratio,
+                edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=lineart_diagnostics,
+                warnings=tuple(warnings),
+            )
+        if (
+            self.config.mixed_monochrome_enabled
+            and split.filled_count > 0
+            and split.thin_count > 0
+            and not lineart_preferred
+        ):
             return ClassicPipelineDecision(
                 strategy=ClassicPipelineStrategy.MIXED_MONOCHROME,
                 reason="foreground contains filled components and thin strokes",
@@ -435,6 +487,7 @@ class ClassicSemanticPipeline:
                 dark_pixel_ratio=metrics.dark_pixel_ratio,
                 colored_pixel_ratio=metrics.colored_pixel_ratio,
                 edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=lineart_diagnostics,
                 warnings=tuple(warnings),
             )
         if split.filled_count > 0 or classification.category is ImageCategory.BINARY_OUTLINE:
@@ -447,6 +500,7 @@ class ClassicSemanticPipeline:
                 dark_pixel_ratio=metrics.dark_pixel_ratio,
                 colored_pixel_ratio=metrics.colored_pixel_ratio,
                 edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                lineart_diagnostics=lineart_diagnostics,
                 warnings=tuple(warnings),
             )
         return ClassicPipelineDecision(
@@ -458,6 +512,7 @@ class ClassicSemanticPipeline:
             dark_pixel_ratio=metrics.dark_pixel_ratio,
             colored_pixel_ratio=metrics.colored_pixel_ratio,
             edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+            lineart_diagnostics=lineart_diagnostics,
             warnings=tuple(warnings),
         )
 
@@ -468,13 +523,21 @@ class ClassicSemanticPipeline:
     ) -> tuple[Any, tuple[SemanticGeometry, ...]]:
         filled_config = FilledRegionExtractionConfig(
             minimum_area=self.config.filled_region_min_area,
-            minimum_fill_ratio=self.config.filled_region_min_ratio,
+            minimum_fill_ratio=self.config.minimum_fill_ratio_for_filled_region,
+            minimum_compactness=self.config.minimum_compactness_for_filled_region,
+            maximum_skeleton_ratio=self.config.maximum_skeleton_ratio_for_filled_region,
             component_connectivity=self.config.component_connectivity,
+            stroke_width=self.config.filled_region_stroke_width,
+            draw_outline=self.config.filled_region_draw_outline,
             strict=self.config.strict,
         )
         strategy = decision.strategy
         if strategy is ClassicPipelineStrategy.LINE_ART:
-            thin = extract_thin_strokes(mask, self.config.centerline_config)
+            thin = extract_thin_strokes(
+                mask,
+                self.config.centerline_config,
+                stroke_width=self.config.line_art_stroke_width,
+            )
             group = PrimitiveGroup(
                 thin.primitives,
                 name="thin_strokes",
@@ -506,6 +569,11 @@ class ClassicSemanticPipeline:
                 filled_region_min_ratio=self.config.filled_region_min_ratio,
                 thin_stroke_max_width=self.config.thin_stroke_max_width,
                 component_connectivity=self.config.component_connectivity,
+                thin_stroke_width=self.config.mixed_line_art_stroke_width,
+                minimum_fill_ratio_for_filled_region=self.config.minimum_fill_ratio_for_filled_region,
+                minimum_compactness_for_filled_region=self.config.minimum_compactness_for_filled_region,
+                maximum_skeleton_ratio_for_filled_region=self.config.maximum_skeleton_ratio_for_filled_region,
+                prefer_lineart_when_ambiguous=self.config.prefer_lineart_when_ambiguous,
             )
             return mixed, tuple(mixed.primitives)
         raise ClassicSemanticPipelineError(f"Unsupported Classic strategy: {strategy.value}")
@@ -514,6 +582,7 @@ class ClassicSemanticPipeline:
         self,
         validation_result: VisualValidationResult | None,
         tikz_result: TikzExportResult,
+        decision: ClassicPipelineDecision,
     ) -> tuple[bool, tuple[str, ...]]:
         reasons: list[str] = []
         if not tikz_result.code.strip() or tikz_result.metrics.draw_commands <= 0:
@@ -522,11 +591,19 @@ class ClassicSemanticPipeline:
             return not reasons, tuple(reasons)
         reasons.extend(validation_result.rejection_reasons)
         raster = validation_result.fidelity_score.raster_metrics
-        if raster.filled_region_recall < self.config.minimum_filled_region_recall:
+        lineart_strategy = (
+            decision.strategy is ClassicPipelineStrategy.LINE_ART
+            or (
+                decision.lineart_diagnostics is not None
+                and decision.lineart_diagnostics.line_art_confidence >= 0.55
+                and decision.lineart_diagnostics.solid_component_area_ratio <= 0.02
+            )
+        )
+        if not lineart_strategy and raster.filled_region_recall < self.config.minimum_filled_region_recall:
             reasons.append("filled_region_recall_below_classic_minimum")
         if raster.thin_stroke_recall < self.config.minimum_thin_stroke_recall:
             reasons.append("thin_stroke_recall_below_classic_minimum")
-        if validation_result.fidelity_score.overall_score < self.config.minimum_acceptance_score:
+        if not lineart_strategy and validation_result.fidelity_score.overall_score < self.config.minimum_acceptance_score:
             reasons.append("score_below_classic_minimum")
         deduped = tuple(dict.fromkeys(reasons))
         return not deduped and validation_result.accepted, deduped
@@ -629,14 +706,26 @@ def _metrics(
     validation_result: VisualValidationResult | None,
 ) -> ClassicSemanticMetrics:
     raster = validation_result.fidelity_score.raster_metrics if validation_result is not None else None
+    fill_metrics = (
+        validation_result.metrics.filled_region_metrics
+        if validation_result is not None
+        else {}
+    )
+    lineart = decision.lineart_diagnostics
     return ClassicSemanticMetrics(
         input_image_size=(int(source.shape[1]), int(source.shape[0])),
         image_category=classification.category.value,
         strategy_used=decision.strategy.value,
         foreground_ratio=classification.metrics.foreground_ratio,
         dark_pixel_ratio=classification.metrics.dark_pixel_ratio,
+        line_art_confidence=lineart.line_art_confidence if lineart is not None else 0.0,
+        mixed_monochrome_confidence=lineart.mixed_monochrome_confidence if lineart is not None else 0.0,
+        binary_outline_confidence=lineart.binary_outline_confidence if lineart is not None else 0.0,
         thin_stroke_primitives=_count_by_source_layer(optimized, "thin_stroke"),
         filled_region_primitives=_count_by_source_layer(optimized, "filled_region"),
+        filled_area_ratio=float(fill_metrics.get("filled_area_ratio", 0.0) or 0.0),
+        white_cutout_count=int(fill_metrics.get("white_cutout_count", 0) or 0),
+        white_cutout_area_ratio=float(fill_metrics.get("white_cutout_area_ratio", 0.0) or 0.0),
         raw_primitive_count=_object_count(raw),
         fitted_primitive_count=_object_count(fitted),
         optimized_primitive_count=_object_count(optimized),

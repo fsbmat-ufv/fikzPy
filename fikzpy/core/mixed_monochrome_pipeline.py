@@ -16,6 +16,8 @@ from fikzpy.core.centerline_pipeline import CenterlineConfig, CenterlineResult, 
 from fikzpy.core.centerline_pipeline import extract_centerlines
 from fikzpy.core.filled_region_extraction import FilledRegionExtractionConfig, FilledRegionExtractionResult
 from fikzpy.core.filled_region_extraction import extract_filled_regions
+from fikzpy.core.lineart_diagnostics import LineArtDiagnosticsConfig, StrokeFillClassification
+from fikzpy.core.lineart_diagnostics import analyze_line_art_mask
 from fikzpy.core.semantic_geometry import PolylinePrimitive, PrimitiveGroup, StrokeStyle
 
 
@@ -119,6 +121,10 @@ def split_foreground_layers(
     filled_region_min_ratio: float,
     thin_stroke_max_width: float,
     component_connectivity: int = 8,
+    minimum_fill_ratio_for_filled_region: float | None = None,
+    minimum_compactness_for_filled_region: float = 0.035,
+    maximum_skeleton_ratio_for_filled_region: float = 0.24,
+    prefer_lineart_when_ambiguous: bool = True,
 ) -> ForegroundLayerSplit:
     """Split binary foreground into probable filled and thin-stroke masks."""
     foreground = _normalize_mask(mask)
@@ -132,6 +138,28 @@ def split_foreground_layers(
         raise ValueError("thin_stroke_max_width must be finite and positive.")
     if component_connectivity not in {4, 8}:
         raise ValueError("component_connectivity must be 4 or 8.")
+    fill_ratio_for_decision = (
+        float(minimum_fill_ratio_for_filled_region)
+        if minimum_fill_ratio_for_filled_region is not None
+        else max(fill_ratio_threshold, 0.24)
+    )
+    diagnostics = analyze_line_art_mask(
+        foreground,
+        LineArtDiagnosticsConfig(
+            component_connectivity=component_connectivity,
+            thin_stroke_max_width=thin_width,
+            filled_region_min_area=int(filled_region_min_area),
+            minimum_fill_ratio_for_filled_region=fill_ratio_for_decision,
+            minimum_compactness_for_filled_region=minimum_compactness_for_filled_region,
+            maximum_skeleton_ratio_for_filled_region=maximum_skeleton_ratio_for_filled_region,
+        ),
+    )
+    component_diagnostics = {item.component_id: item for item in diagnostics.component_metrics}
+    lineart_strict = (
+        prefer_lineart_when_ambiguous
+        and diagnostics.line_art_confidence >= 0.55
+        and diagnostics.solid_component_area_ratio <= 0.02
+    )
 
     labels_count, labels, stats, centroids = cv2.connectedComponentsWithStats(
         foreground.astype(np.uint8),
@@ -153,38 +181,42 @@ def split_foreground_layers(
         fill_ratio = float(area / bbox_area)
         component_mask = labels == component_id
         thickness = _component_max_thickness(component_mask)
-        large_area = area >= int(filled_region_min_area)
-        minimum_dimension = min(width, height)
-        compact = fill_ratio >= fill_ratio_threshold
-        thick = thickness > thin_width
-        compact_region = compact and minimum_dimension > thin_width
-        large_compact_area = (
-            area >= int(filled_region_min_area) * 6
-            and fill_ratio >= fill_ratio_threshold * 0.5
-            and minimum_dimension > thin_width
+        component_metric = component_diagnostics.get(component_id)
+        clearly_filled = (
+            component_metric is not None
+            and component_metric.classification is StrokeFillClassification.FILLED_REGION
+            and not lineart_strict
         )
-        clearly_filled = large_area and (thick or compact_region or large_compact_area)
-        clearly_thin = not clearly_filled and thickness <= thin_width
         if clearly_filled:
             filled_mask |= component_mask
             filled_ids.append(component_id)
             layer = "filled_region"
+            reason = component_metric.decision_reason if component_metric is not None else "legacy_filled_evidence"
         else:
             thin_mask |= component_mask
             thin_ids.append(component_id)
             layer = "thin_stroke"
-            if large_area and not compact:
+            reason = component_metric.decision_reason if component_metric is not None else "thin_by_default"
+            if area >= int(filled_region_min_area) and component_metric is not None and component_metric.classification is StrokeFillClassification.AMBIGUOUS:
                 ambiguous_ids.append(component_id)
                 warnings.append(f"ambiguous_component_as_thin:{component_id}")
+            elif lineart_strict and area >= int(filled_region_min_area):
+                warnings.append(f"lineart_component_as_thin:{component_id}")
         summaries.append(
             {
                 "component_id": component_id,
                 "layer": layer,
+                "decision": layer,
+                "reason": reason,
                 "area": area,
                 "bbox": [x, y, width, height],
                 "centroid": [round(float(centroids[component_id][0]), 3), round(float(centroids[component_id][1]), 3)],
                 "fill_ratio": round(fill_ratio, 6),
                 "max_thickness": round(thickness, 3),
+                "compactness": round(component_metric.compactness, 6) if component_metric is not None else 0.0,
+                "median_thickness": round(component_metric.median_thickness, 3) if component_metric is not None else 0.0,
+                "skeleton_ratio": round(component_metric.skeleton_ratio, 6) if component_metric is not None else 0.0,
+                "line_art_confidence": round(diagnostics.line_art_confidence, 6),
             }
         )
 
@@ -199,6 +231,7 @@ def split_foreground_layers(
         "foreground": _array_summary(foreground),
         "filled": _array_summary(filled_mask),
         "thin": _array_summary(thin_mask),
+        "lineart_diagnostics": diagnostics.to_dict(),
         "filled_ids": filled_ids,
         "thin_ids": thin_ids,
         "ambiguous_ids": ambiguous_ids,
@@ -222,6 +255,8 @@ def split_foreground_layers(
 def extract_thin_strokes(
     mask: np.ndarray,
     config: CenterlineConfig | None = None,
+    *,
+    stroke_width: float = 1.0,
 ) -> ThinStrokeExtractionResult:
     """Extract centerline polylines from a thin-stroke mask."""
     thin_mask = _normalize_mask(mask)
@@ -248,7 +283,7 @@ def extract_thin_strokes(
             PolylinePrimitive(
                 primitive.points,
                 closed=primitive.closed,
-                stroke=StrokeStyle(width=1.0),
+                stroke=StrokeStyle(width=float(stroke_width)),
                 fill=None,
                 confidence=primitive.confidence,
                 error=primitive.error,
@@ -281,6 +316,11 @@ def extract_mixed_monochrome_primitives(
     filled_region_min_ratio: float,
     thin_stroke_max_width: float,
     component_connectivity: int = 8,
+    thin_stroke_width: float = 1.0,
+    minimum_fill_ratio_for_filled_region: float | None = None,
+    minimum_compactness_for_filled_region: float = 0.035,
+    maximum_skeleton_ratio_for_filled_region: float = 0.24,
+    prefer_lineart_when_ambiguous: bool = True,
 ) -> MixedMonochromeResult:
     """Extract filled regions plus thin-stroke centerlines from a monochrome mask."""
     split = split_foreground_layers(
@@ -289,9 +329,13 @@ def extract_mixed_monochrome_primitives(
         filled_region_min_ratio=filled_region_min_ratio,
         thin_stroke_max_width=thin_stroke_max_width,
         component_connectivity=component_connectivity,
+        minimum_fill_ratio_for_filled_region=minimum_fill_ratio_for_filled_region,
+        minimum_compactness_for_filled_region=minimum_compactness_for_filled_region,
+        maximum_skeleton_ratio_for_filled_region=maximum_skeleton_ratio_for_filled_region,
+        prefer_lineart_when_ambiguous=prefer_lineart_when_ambiguous,
     )
     filled = extract_filled_regions(split.filled_mask, filled_config)
-    thin = extract_thin_strokes(split.thin_mask, centerline_config)
+    thin = extract_thin_strokes(split.thin_mask, centerline_config, stroke_width=thin_stroke_width)
     groups: list[PrimitiveGroup] = []
     if filled.primitives:
         groups.append(

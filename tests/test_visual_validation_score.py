@@ -368,6 +368,30 @@ def test_output_with_only_thin_lines_is_rejected_when_source_has_filled_mass() -
     assert "missing_large_dark_regions" in result.regression_flags
 
 
+def test_lineart_black_mass_with_white_cutouts_sets_overfill_flags() -> None:
+    source = circle_image()
+    black_fill = FillStyle(RGBColor.black())
+    white_fill = FillStyle(RGBColor(255, 255, 255))
+    hidden_white_stroke = StrokeStyle(RGBColor(255, 255, 255), width=0.1, opacity=0.0)
+    primitives = [
+        ClosedShapePrimitive((p(5, 5), p(35, 5), p(35, 35), p(5, 35)), fill=black_fill, stroke=StrokeStyle(width=1.0)),
+        ClosedShapePrimitive((p(10, 10), p(18, 10), p(18, 18), p(10, 18)), fill=white_fill, stroke=hidden_white_stroke),
+        ClosedShapePrimitive((p(22, 10), p(30, 10), p(30, 18), p(22, 18)), fill=white_fill, stroke=hidden_white_stroke),
+        ClosedShapePrimitive((p(10, 22), p(18, 22), p(18, 30), p(10, 30)), fill=white_fill, stroke=hidden_white_stroke),
+        ClosedShapePrimitive((p(22, 22), p(30, 22), p(30, 30), p(22, 30)), fill=white_fill, stroke=hidden_white_stroke),
+    ]
+    tikz = export_primitives_to_tikz(primitives)
+    result = validate_semantic_output(source, primitives, tikz)
+
+    flags = set(result.regression_flags)
+    assert not result.accepted
+    assert {"excessive_filled_area", "artificial_black_mass", "overfilled_lineart", "excessive_white_cutouts"} <= flags
+    assert "lineart_has_excessive_filled_area" in result.rejection_reasons
+    assert "lineart_uses_excessive_white_cutouts" in result.rejection_reasons
+    assert result.metrics.lineart_fill_metrics["source_is_line_art"]
+    assert result.metrics.filled_region_metrics["white_cutout_count"] == 4
+
+
 def test_pipeline_remains_isolated_from_app_and_scores_exported_semantic_output() -> None:
     svg = '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="10" fill="none" stroke="black"/></svg>'
     parsed = parse_svg_to_primitives(svg)

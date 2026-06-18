@@ -100,6 +100,8 @@ The hybrid route preserves:
 
 Ambiguous components are treated conservatively. Avoiding loss of filled dark mass is preferred over maximum compactness.
 
+Issue 11.5 adds a stricter line-art refinement layer for the opposite failure mode: line drawings that should stay as thin strokes but could otherwise become black filled masses with white cutouts. See `docs/classic_lineart_refinement.md` for the line-art diagnostics, filled-region strictness, white-cutout validation, and stroke-width policy.
+
 ## Filled Regions
 
 `extract_filled_regions()` uses OpenCV contour extraction over the binary foreground mask. It is internal and deterministic, with no required Potrace, VTracer, AutoTrace, Inkscape, LaTeX, or svg2tikz dependency.

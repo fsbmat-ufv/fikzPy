@@ -22,10 +22,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from fikzpy.core.diagnostics import sha256_file
+from fikzpy.core.classic_semantic_pipeline import run_classic_semantic_pipeline
 from fikzpy.core.image_processor import ProcessingSettings
 from fikzpy.core.latex_compiler import compile_latex_document
+from fikzpy.core.semantic_geometry import ClosedShapePrimitive, FillStyle, LinePrimitive, Point2D, RGBColor, StrokeStyle
+from fikzpy.core.semantic_tikz_exporter import export_primitives_to_tikz
 from fikzpy.core.tikz_generator import TikzOptions, wrap_standalone_document
 from fikzpy.core.tikz_pipeline import build_tikz_from_image
+from fikzpy.core.visual_validation import validate_semantic_output
 
 
 ImageFactory = Callable[[], np.ndarray]
@@ -93,6 +97,63 @@ def _noisy_grayscale() -> np.ndarray:
     return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
 
+def _dinosaur_lineart_synthetic() -> np.ndarray:
+    image = np.full((128, 168, 3), 255, dtype=np.uint8)
+    body = np.array(
+        [(20, 78), (32, 50), (62, 35), (104, 38), (132, 55), (148, 75), (132, 90), (96, 92), (72, 104), (44, 100)],
+        dtype=np.int32,
+    )
+    cv2.polylines(image, [body], True, (0, 0, 0), 2)
+    cv2.circle(image, (117, 55), 3, (0, 0, 0), 1)
+    for x in (132, 138, 144):
+        cv2.line(image, (x, 68), (x - 3, 75), (0, 0, 0), 1)
+    for x in (47, 58, 90):
+        cv2.line(image, (x, 96), (x - 5, 116), (0, 0, 0), 2)
+        cv2.line(image, (x - 5, 116), (x + 6, 116), (0, 0, 0), 1)
+    cv2.line(image, (70, 56), (102, 61), (0, 0, 0), 1)
+    cv2.line(image, (67, 70), (102, 75), (0, 0, 0), 1)
+    cv2.line(image, (24, 75), (7, 68), (0, 0, 0), 2)
+    cv2.line(image, (8, 68), (18, 62), (0, 0, 0), 1)
+    return image
+
+
+def _closed_contour_lineart() -> np.ndarray:
+    image = np.full((112, 112, 3), 255, dtype=np.uint8)
+    cv2.ellipse(image, (56, 56), (36, 26), 0, 0, 360, (0, 0, 0), 2)
+    cv2.circle(image, (45, 50), 4, (0, 0, 0), 1)
+    cv2.line(image, (30, 66), (82, 68), (0, 0, 0), 1)
+    cv2.line(image, (44, 78), (40, 94), (0, 0, 0), 2)
+    cv2.line(image, (68, 78), (74, 94), (0, 0, 0), 2)
+    return image
+
+
+def _filled_rectangle_real() -> np.ndarray:
+    image = np.full((96, 96, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (24, 18), (72, 76), (0, 0, 0), -1)
+    cv2.rectangle(image, (40, 34), (56, 52), (255, 255, 255), -1)
+    return image
+
+
+def _mixed_monochrome_synthetic() -> np.ndarray:
+    image = np.full((128, 128, 3), 255, dtype=np.uint8)
+    cv2.circle(image, (42, 34), 18, (0, 0, 0), -1)
+    cv2.circle(image, (86, 36), 16, (0, 0, 0), -1)
+    cv2.rectangle(image, (24, 70), (52, 104), (0, 0, 0), -1)
+    cv2.rectangle(image, (76, 68), (105, 105), (0, 0, 0), -1)
+    cv2.circle(image, (42, 39), 10, (255, 255, 255), -1)
+    cv2.circle(image, (86, 41), 9, (255, 255, 255), -1)
+    cv2.line(image, (30, 40), (37, 40), (0, 0, 0), 1)
+    cv2.line(image, (46, 40), (52, 40), (0, 0, 0), 1)
+    cv2.line(image, (38, 48), (47, 50), (0, 0, 0), 1)
+    cv2.line(image, (79, 41), (84, 41), (0, 0, 0), 1)
+    cv2.line(image, (90, 41), (96, 41), (0, 0, 0), 1)
+    cv2.line(image, (20, 62), (58, 62), (0, 0, 0), 1)
+    cv2.line(image, (72, 61), (110, 61), (0, 0, 0), 1)
+    cv2.line(image, (60, 76), (72, 90), (0, 0, 0), 1)
+    cv2.line(image, (64, 88), (70, 96), (0, 0, 0), 1)
+    return image
+
+
 def generate_baseline(
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     *,
@@ -157,8 +218,158 @@ def generate_baseline(
 
     report_path = destination / "README.md"
     report_path.write_text(_render_markdown_report(records), encoding="utf-8")
+    _write_lineart_refinement_report(destination)
 
     return records
+
+
+def _write_lineart_refinement_report(destination: Path) -> None:
+    cases = [
+        _pipeline_lineart_case("dinosaur_lineart_synthetic_good", _dinosaur_lineart_synthetic()),
+        _bad_overfilled_case("dinosaur_lineart_bad_overfilled", _dinosaur_lineart_synthetic()),
+        _pipeline_lineart_case("line_art_simple", _line_art_bw()),
+        _pipeline_lineart_case("closed_contour_lineart", _closed_contour_lineart()),
+        _pipeline_lineart_case("filled_rectangle_real", _filled_rectangle_real()),
+        _pipeline_lineart_case("silhouette_real", _silhouette_bw()),
+        _pipeline_lineart_case("mixed_monochrome_synthetic", _mixed_monochrome_synthetic()),
+        _mixed_bad_regression_case("mixed_monochrome_bad_regression", _mixed_monochrome_synthetic()),
+    ]
+    report = {
+        "issue": "Issue 11.5",
+        "description": "Classic semantic line-art refinement regression report",
+        "cases": cases,
+    }
+    path = destination / "classic_lineart_refinement_report.json"
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _pipeline_lineart_case(name: str, image: np.ndarray) -> dict[str, Any]:
+    result = run_classic_semantic_pipeline(image)
+    validation = result.validation_result
+    raster = validation.fidelity_score.raster_metrics if validation is not None else None
+    return {
+        "name": name,
+        "strategy_used": result.strategy_used.value,
+        "line_art_confidence": round(result.metrics.line_art_confidence, 6),
+        "mixed_confidence": round(result.metrics.mixed_monochrome_confidence, 6),
+        "filled_region_count": result.metrics.filled_region_primitives,
+        "thin_stroke_count": result.metrics.thin_stroke_primitives,
+        "filled_area_ratio": round(result.metrics.filled_area_ratio, 6),
+        "white_cutout_count": result.metrics.white_cutout_count,
+        "white_cutout_area_ratio": round(result.metrics.white_cutout_area_ratio, 6),
+        "dark_mass_preservation": round(result.metrics.dark_mass_preservation_ratio, 6),
+        "thin_stroke_recall": round(result.metrics.thin_stroke_recall, 6),
+        "filled_region_recall": round(result.metrics.filled_region_recall, 6),
+        "validation_score": round(result.metrics.validation_score, 6),
+        "regression_flags": list(validation.regression_flags) if validation is not None else [],
+        "accepted": result.accepted,
+        "rejection_reasons": list(result.rejection_reasons),
+        "tikz_draw_commands": result.tikz_export_result.metrics.draw_commands,
+        "tikz_fill_commands": result.tikz_export_result.metrics.filled_paths_written,
+        "tikz_code_characters": len(result.tikz_code),
+        "deterministic_hash": result.deterministic_hash,
+        "source_foreground_ratio": round(raster.source_foreground_ratio, 6) if raster is not None else 0.0,
+        "rendered_foreground_ratio": round(raster.rendered_foreground_ratio, 6) if raster is not None else 0.0,
+    }
+
+
+def _bad_overfilled_case(name: str, image: np.ndarray) -> dict[str, Any]:
+    primitives = _bad_overfilled_dinosaur_primitives()
+    tikz = export_primitives_to_tikz(primitives)
+    validation = validate_semantic_output(image, primitives, tikz)
+    return _validation_case_record(name, "bad_overfilled_fixture", primitives, tikz, validation)
+
+
+def _mixed_bad_regression_case(name: str, image: np.ndarray) -> dict[str, Any]:
+    primitives = [
+        LinePrimitive(_p(30, 40), _p(37, 40)),
+        LinePrimitive(_p(46, 40), _p(52, 40)),
+        LinePrimitive(_p(38, 48), _p(47, 50)),
+        LinePrimitive(_p(20, 62), _p(58, 62)),
+        LinePrimitive(_p(72, 61), _p(110, 61)),
+    ]
+    tikz = export_primitives_to_tikz(primitives)
+    validation = validate_semantic_output(image, primitives, tikz)
+    return _validation_case_record(name, "mixed_bad_thin_only_fixture", primitives, tikz, validation)
+
+
+def _validation_case_record(name: str, strategy: str, primitives: list[Any] | tuple[Any, ...], tikz: Any, validation: Any) -> dict[str, Any]:
+    raster = validation.fidelity_score.raster_metrics
+    fill_metrics = validation.metrics.filled_region_metrics
+    lineart_metrics = validation.metrics.lineart_fill_metrics
+    diagnostics = lineart_metrics.get("diagnostics") or {}
+    return {
+        "name": name,
+        "strategy_used": strategy,
+        "line_art_confidence": round(float(lineart_metrics.get("line_art_confidence", 0.0)), 6),
+        "mixed_confidence": round(float(diagnostics.get("mixed_monochrome_confidence", 0.0)), 6),
+        "filled_region_count": sum(1 for primitive in primitives if _has_visible_fill(primitive, RGBColor.black())),
+        "thin_stroke_count": sum(1 for primitive in primitives if isinstance(primitive, LinePrimitive)),
+        "filled_area_ratio": round(float(fill_metrics.get("filled_area_ratio", 0.0)), 6),
+        "white_cutout_count": int(fill_metrics.get("white_cutout_count", 0)),
+        "white_cutout_area_ratio": round(float(fill_metrics.get("white_cutout_area_ratio", 0.0)), 6),
+        "dark_mass_preservation": round(raster.dark_mass_preservation_ratio, 6),
+        "thin_stroke_recall": round(raster.thin_stroke_recall, 6),
+        "filled_region_recall": round(raster.filled_region_recall, 6),
+        "validation_score": round(validation.fidelity_score.overall_score, 6),
+        "regression_flags": list(validation.regression_flags),
+        "accepted": validation.accepted,
+        "rejection_reasons": list(validation.rejection_reasons),
+        "tikz_draw_commands": tikz.metrics.draw_commands,
+        "tikz_fill_commands": tikz.metrics.filled_paths_written,
+        "tikz_code_characters": len(tikz.code),
+        "deterministic_hash": validation.deterministic_hash,
+    }
+
+
+def _bad_overfilled_dinosaur_primitives() -> tuple[ClosedShapePrimitive, ...]:
+    white_fill = FillStyle(RGBColor(255, 255, 255))
+    white_cutout_stroke = StrokeStyle(RGBColor(255, 255, 255), width=0.1, opacity=0.0)
+    return (
+        ClosedShapePrimitive(
+            (_p(18, 34), _p(150, 34), _p(158, 98), _p(26, 108)),
+            stroke=StrokeStyle(RGBColor.black(), width=1.0),
+            fill=FillStyle(RGBColor.black()),
+            metadata={"source_layer": "filled_region"},
+        ),
+        ClosedShapePrimitive(
+            (_p(38, 52), _p(118, 48), _p(128, 78), _p(42, 84)),
+            stroke=white_cutout_stroke,
+            fill=white_fill,
+            metadata={"source_layer": "filled_region_hole"},
+        ),
+        ClosedShapePrimitive(
+            (_p(44, 86), _p(78, 84), _p(76, 96), _p(42, 98)),
+            stroke=white_cutout_stroke,
+            fill=white_fill,
+            metadata={"source_layer": "filled_region_hole"},
+        ),
+        ClosedShapePrimitive(
+            (_p(92, 84), _p(132, 82), _p(130, 94), _p(88, 98)),
+            stroke=white_cutout_stroke,
+            fill=white_fill,
+            metadata={"source_layer": "filled_region_hole"},
+        ),
+        ClosedShapePrimitive(
+            (_p(108, 50), _p(124, 50), _p(124, 62), _p(108, 62)),
+            stroke=white_cutout_stroke,
+            fill=white_fill,
+            metadata={"source_layer": "filled_region_hole"},
+        ),
+    )
+
+
+def _has_visible_fill(primitive: Any, color: RGBColor) -> bool:
+    fill = getattr(primitive, "fill", None)
+    if not isinstance(fill, FillStyle):
+        return False
+    if fill.opacity is not None and fill.opacity <= 0.0:
+        return False
+    return fill.color == color
+
+
+def _p(x: float, y: float) -> Point2D:
+    return Point2D(float(x), float(y))
 
 
 def _record_metrics(
