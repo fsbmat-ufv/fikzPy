@@ -85,11 +85,14 @@ Via `TikzOptions.classic_strategy` (usado por `build_tikz_from_image`):
 options = TikzOptions(classic_strategy="filled")
 ```
 
-Na GUI (`fikzpy/gui/main_window.py`), o painel de Parametros tem um
-combo "Estrategia Classic" com as opcoes Auto / Line Art / Filled, ao
-lado do seletor de Modo (Classic / Visual / Contornos). Visual e
-Contornos nao foram alterados e o combo de estrategia e ignorado fora do
-modo Classic.
+Na GUI (`fikzpy/gui/main_window.py`), o seletor principal "Modo" mostra
+diretamente as cinco opcoes: Classic Auto, Classic Line Art, Classic
+Filled, Visual, Contornos. Nao ha combo separado de estrategia: cada
+item do combo principal carrega o par `(vectorization_mode,
+classic_strategy)` internamente (ex.: "Classic Line Art" ->
+`("classic", "line_art")`; "Visual" -> `("visual", "auto")`, onde a
+estrategia e ignorada). Visual e Contornos continuam funcionando
+exatamente como antes.
 
 ## Visual e Contornos
 

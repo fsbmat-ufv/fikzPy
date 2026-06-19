@@ -298,9 +298,11 @@ def test_import_isolated_no_gui_latex_external_tracer_or_converter_dependency() 
 
 def test_gui_source_keeps_classic_visual_and_contours_labels() -> None:
     source = Path("fikzpy/gui/main_window.py").read_text(encoding="utf-8")
-    assert '"Classic", "classic"' in source
-    assert '"Visual", "visual"' in source
-    assert '"Contornos", "contours"' in source
+    assert '"Classic Auto", ("classic", "auto")' in source
+    assert '"Classic Line Art", ("classic", "line_art")' in source
+    assert '"Classic Filled", ("classic", "filled")' in source
+    assert '"Visual", ("visual", "auto")' in source
+    assert '"Contornos", ("contours", "auto")' in source
 
 
 def test_binary_filled_region_uses_fill_and_line_art_uses_centerline_metadata() -> None:

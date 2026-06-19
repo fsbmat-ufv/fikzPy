@@ -139,16 +139,12 @@ class MainWindow(QMainWindow):
         form = QFormLayout(panel)
 
         self.vectorization_mode_combo = QComboBox()
-        self.vectorization_mode_combo.addItem("Classic", "classic")
-        self.vectorization_mode_combo.addItem("Visual", "visual")
-        self.vectorization_mode_combo.addItem("Contornos", "contours")
+        self.vectorization_mode_combo.addItem("Classic Auto", ("classic", "auto"))
+        self.vectorization_mode_combo.addItem("Classic Line Art", ("classic", "line_art"))
+        self.vectorization_mode_combo.addItem("Classic Filled", ("classic", "filled"))
+        self.vectorization_mode_combo.addItem("Visual", ("visual", "auto"))
+        self.vectorization_mode_combo.addItem("Contornos", ("contours", "auto"))
         form.addRow("Modo", self.vectorization_mode_combo)
-
-        self.classic_strategy_combo = QComboBox()
-        self.classic_strategy_combo.addItem("Auto", "auto")
-        self.classic_strategy_combo.addItem("Line Art", "line_art")
-        self.classic_strategy_combo.addItem("Filled", "filled")
-        form.addRow("Estrategia Classic", self.classic_strategy_combo)
 
         self.ink_threshold_spin = QSpinBox()
         self.ink_threshold_spin.setRange(120, 245)
@@ -226,7 +222,6 @@ class MainWindow(QMainWindow):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
         self.vectorization_mode_combo.currentIndexChanged.connect(self._settings_changed)
-        self.classic_strategy_combo.currentIndexChanged.connect(self._settings_changed)
         self.line_color_edit.editingFinished.connect(self._settings_changed)
 
         dock.setWidget(panel)
@@ -283,10 +278,18 @@ class MainWindow(QMainWindow):
                 )
                 group_menu.addAction(action)
 
+    def _selected_mode_and_strategy(self) -> tuple[str, str]:
+        """Return (vectorization_mode, classic_strategy) for the active main-mode selection."""
+        data = self.vectorization_mode_combo.currentData()
+        if isinstance(data, tuple) and len(data) == 2:
+            return str(data[0]), str(data[1])
+        return str(data or "classic"), "auto"
+
     def processing_settings(self) -> ProcessingSettings:
         """Read image-processing settings from the UI."""
+        mode, _strategy = self._selected_mode_and_strategy()
         return ProcessingSettings(
-            vectorization_mode=self.vectorization_mode_combo.currentData(),
+            vectorization_mode=mode,
             smoothing=self.smoothing_spin.value(),
             canny_low=self.canny_low_spin.value(),
             canny_high=self.canny_high_spin.value(),
@@ -297,14 +300,14 @@ class MainWindow(QMainWindow):
 
     def tikz_options(self) -> TikzOptions:
         """Read TikZ generation options from the UI."""
+        mode, strategy = self._selected_mode_and_strategy()
         return TikzOptions(
             tikz_scale=self.tikz_scale_spin.value(),
             line_width=self.line_width_spin.value(),
             line_color=self.line_color_edit.text(),
-            use_bezier=self.bezier_check.isChecked()
-            or self.vectorization_mode_combo.currentData() in {"visual"},
+            use_bezier=self.bezier_check.isChecked() or mode in {"visual"},
             width_units=self.width_units_spin.value(),
-            classic_strategy=self.classic_strategy_combo.currentData(),
+            classic_strategy=strategy,
         )
 
     def open_image(self) -> None:
@@ -447,8 +450,8 @@ class MainWindow(QMainWindow):
     def _current_output_mode(self) -> str:
         if self.build_result is not None:
             return self.build_result.effective_mode
-        mode = self.vectorization_mode_combo.currentData() or "classic"
-        return str(mode).lower().replace(" ", "_")
+        mode, _strategy = self._selected_mode_and_strategy()
+        return mode.lower().replace(" ", "_")
 
     def detect_latex(self, distribution: str | None = None) -> None:
         try:
