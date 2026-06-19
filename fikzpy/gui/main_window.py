@@ -144,6 +144,12 @@ class MainWindow(QMainWindow):
         self.vectorization_mode_combo.addItem("Contornos", "contours")
         form.addRow("Modo", self.vectorization_mode_combo)
 
+        self.classic_strategy_combo = QComboBox()
+        self.classic_strategy_combo.addItem("Auto", "auto")
+        self.classic_strategy_combo.addItem("Line Art", "line_art")
+        self.classic_strategy_combo.addItem("Filled", "filled")
+        form.addRow("Estrategia Classic", self.classic_strategy_combo)
+
         self.ink_threshold_spin = QSpinBox()
         self.ink_threshold_spin.setRange(120, 245)
         self.ink_threshold_spin.setValue(215)
@@ -220,6 +226,7 @@ class MainWindow(QMainWindow):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
         self.vectorization_mode_combo.currentIndexChanged.connect(self._settings_changed)
+        self.classic_strategy_combo.currentIndexChanged.connect(self._settings_changed)
         self.line_color_edit.editingFinished.connect(self._settings_changed)
 
         dock.setWidget(panel)
@@ -297,6 +304,7 @@ class MainWindow(QMainWindow):
             use_bezier=self.bezier_check.isChecked()
             or self.vectorization_mode_combo.currentData() in {"visual"},
             width_units=self.width_units_spin.value(),
+            classic_strategy=self.classic_strategy_combo.currentData(),
         )
 
     def open_image(self) -> None:

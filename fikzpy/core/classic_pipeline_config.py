@@ -31,13 +31,29 @@ class ClassicPipelineStatus(Enum):
 
 
 class ClassicPipelineStrategy(Enum):
-    """Available semantic Classic extraction strategies."""
+    """Internal semantic Classic extraction strategies."""
 
     AUTO = "auto"
     LINE_ART = "line_art"
     BINARY_OUTLINE = "binary_outline"
     COLOR_REGIONS = "color_regions"
     MIXED_MONOCHROME = "mixed_monochrome"
+
+
+class ClassicVectorizationStrategy(Enum):
+    """User-facing Classic strategy: auto, line_art, or filled.
+
+    This is the explicit choice exposed to callers/GUI. It is simpler than
+    ``ClassicPipelineStrategy`` (which has internal extraction paths such as
+    MIXED_MONOCHROME and COLOR_REGIONS) and maps onto it: ``LINE_ART`` forces
+    the centerline/stroke extraction path, ``FILLED`` forces the filled
+    closed-shape extraction path, and ``AUTO`` keeps the conservative
+    automatic heuristics.
+    """
+
+    AUTO = "auto"
+    LINE_ART = "line_art"
+    FILLED = "filled"
 
 
 class ClassicFallbackPolicy(Enum):
@@ -60,6 +76,7 @@ class ClassicSemanticConfig:
     """Centralized configuration for the semantic Classic pipeline."""
 
     enable_semantic_classic: bool = True
+    vectorization_strategy: ClassicVectorizationStrategy | str = ClassicVectorizationStrategy.AUTO
     strategy: ClassicPipelineStrategy | str = ClassicPipelineStrategy.AUTO
     auto_detect_strategy: bool = True
     fallback_policy: ClassicFallbackPolicy | str = ClassicFallbackPolicy.REJECT_RESULT
@@ -133,9 +150,16 @@ class ClassicSemanticConfig:
         ):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"{name} must be a bool.")
+        object.__setattr__(self, "vectorization_strategy", coerce_vectorization_strategy(self.vectorization_strategy))
         object.__setattr__(self, "strategy", coerce_classic_strategy(self.strategy))
         object.__setattr__(self, "fallback_policy", coerce_fallback_policy(self.fallback_policy))
         object.__setattr__(self, "validation_policy", coerce_validation_policy(self.validation_policy))
+        if self.vectorization_strategy is ClassicVectorizationStrategy.LINE_ART:
+            object.__setattr__(self, "strategy", ClassicPipelineStrategy.LINE_ART)
+            object.__setattr__(self, "auto_detect_strategy", False)
+        elif self.vectorization_strategy is ClassicVectorizationStrategy.FILLED:
+            object.__setattr__(self, "strategy", ClassicPipelineStrategy.BINARY_OUTLINE)
+            object.__setattr__(self, "auto_detect_strategy", False)
         for name in (
             "minimum_acceptance_score",
             "minimum_filled_region_recall",
@@ -199,6 +223,7 @@ class ClassicSemanticConfig:
         """Return serializable configuration diagnostics."""
         return {
             "enable_semantic_classic": self.enable_semantic_classic,
+            "vectorization_strategy": self.vectorization_strategy.value,
             "strategy": self.strategy.value,
             "auto_detect_strategy": self.auto_detect_strategy,
             "fallback_policy": self.fallback_policy.value,
@@ -259,6 +284,19 @@ def coerce_classic_strategy(value: ClassicPipelineStrategy | str) -> ClassicPipe
     raise ValueError(f"Unsupported Classic strategy: {value!r}")
 
 
+def coerce_vectorization_strategy(value: ClassicVectorizationStrategy | str) -> ClassicVectorizationStrategy:
+    """Coerce user-facing Classic vectorization strategy values."""
+    if isinstance(value, ClassicVectorizationStrategy):
+        return value
+    normalized = str(value).strip().lower()
+    aliases = {"line": "line_art", "lineart": "line_art", "fill": "filled"}
+    normalized = aliases.get(normalized, normalized)
+    for item in ClassicVectorizationStrategy:
+        if normalized in {item.value, item.name.lower()}:
+            return item
+    raise ValueError(f"Unsupported Classic vectorization strategy: {value!r}")
+
+
 def coerce_fallback_policy(value: ClassicFallbackPolicy | str) -> ClassicFallbackPolicy:
     """Coerce fallback policy values."""
     if isinstance(value, ClassicFallbackPolicy):
@@ -288,7 +326,9 @@ __all__ = [
     "ClassicPipelineStrategy",
     "ClassicSemanticConfig",
     "ClassicValidationPolicy",
+    "ClassicVectorizationStrategy",
     "coerce_classic_strategy",
     "coerce_fallback_policy",
     "coerce_validation_policy",
+    "coerce_vectorization_strategy",
 ]

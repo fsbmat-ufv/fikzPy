@@ -32,6 +32,7 @@ from fikzpy.core.semantic_tikz_exporter import TikzExportResult, export_primitiv
 from fikzpy.core.visual_validation import ValidationStatus, VisualValidationResult, validate_semantic_output
 from fikzpy.core.classic_pipeline_config import ClassicFallbackPolicy, ClassicPipelineStatus, ClassicPipelineStrategy
 from fikzpy.core.classic_pipeline_config import ClassicSemanticConfig, ClassicValidationPolicy
+from fikzpy.core.classic_pipeline_config import ClassicVectorizationStrategy
 
 
 class ClassicSemanticPipelineError(RuntimeError):
@@ -56,6 +57,24 @@ so these reasons do not indicate a real regression for that strategy.
 Acceptance for LINE_ART instead rests on continuity (edge/foreground/contour
 recall and fragmentation, via ``lineart_balance``) and thin-stroke signals,
 which remain in force."""
+
+_AUTO_VISUAL_RECOMMENDATION_MESSAGE = (
+    "Esta imagem parece complexa para o Classic. Para maior fidelidade, use o modo Visual. "
+    "Para codigo mais editavel, tente Classic Line Art ou Classic Filled."
+)
+"""Warning shown when Classic Auto rejects/distrusts its own output.
+
+Classic Auto never silently falls back to Visual; it only recommends it.
+"""
+
+_AUTO_DROPPED_HOLE_WARNING_THRESHOLD = 20
+"""Minimum count of ``skipped_small_hole`` extraction warnings to treat a
+Classic Auto filled/mixed candidate as low-confidence.
+
+A filled-region or mixed-monochrome candidate that silently drops dozens of
+small interior cutouts turns a detailed shape into a misleadingly solid
+black mass; Classic Auto should not present that as an accepted result.
+"""
 
 
 @dataclass(frozen=True)
@@ -387,6 +406,31 @@ class ClassicSemanticPipeline:
 
             accepted = candidate.accepted
             rejection_reasons = candidate.rejection_reasons
+            if self.config.vectorization_strategy is ClassicVectorizationStrategy.AUTO and accepted:
+                dropped_hole_count = sum(1 for warning in warnings if warning.code.startswith("skipped_small_hole"))
+                if dropped_hole_count >= _AUTO_DROPPED_HOLE_WARNING_THRESHOLD:
+                    accepted = False
+                    rejection_reasons = (*rejection_reasons, "auto_conservative_dropped_hole_detail")
+                    warnings.append(
+                        ClassicSemanticWarning(
+                            "auto_conservative_dropped_hole_detail",
+                            "Many small interior cutouts were dropped during extraction; "
+                            "Classic Auto is treating this result as low-confidence rather than presenting it as good.",
+                            "decide",
+                        )
+                    )
+            if self.config.vectorization_strategy is ClassicVectorizationStrategy.AUTO and not accepted:
+                warnings.append(
+                    ClassicSemanticWarning(
+                        "classic_auto_recommend_visual",
+                        _AUTO_VISUAL_RECOMMENDATION_MESSAGE,
+                        "decide",
+                    )
+                )
+            if self.config.vectorization_strategy is ClassicVectorizationStrategy.FILLED:
+                filled_warning = _filled_strategy_mismatch_warning(classification, candidate.extraction)
+                if filled_warning is not None:
+                    warnings.append(filled_warning)
             status = ClassicPipelineStatus.ACCEPTED if accepted else ClassicPipelineStatus.REJECTED
             if not accepted and self.config.fallback_policy is ClassicFallbackPolicy.LEGACY_EXPLICIT:
                 warnings.append(
@@ -967,6 +1011,34 @@ def _warnings_from_tikz(result: TikzExportResult) -> list[ClassicSemanticWarning
 
 def _warnings_from_validation(result: VisualValidationResult) -> list[ClassicSemanticWarning]:
     return [ClassicSemanticWarning(warning.code, warning.message, "validate") for warning in result.warnings]
+
+
+def _filled_strategy_mismatch_warning(
+    classification: ImageClassificationResult,
+    extraction: Any,
+) -> ClassicSemanticWarning | None:
+    """Return a warning if a forced FILLED strategy looks like a poor fit.
+
+    Many holes relative to regions, or a LINE_ART classification, indicate
+    the source is thin/line structure rather than solid silhouettes, where
+    Classic Line Art or Visual would serve the user better.
+    """
+    if classification.category is ImageCategory.LINE_ART:
+        return ClassicSemanticWarning(
+            "classic_filled_image_may_be_lineart",
+            "Esta imagem parece line art; Classic Filled pode nao ser ideal. "
+            "Considere Classic Line Art ou Visual.",
+            "decide",
+        )
+    if isinstance(extraction, FilledRegionExtractionResult) and extraction.region_count > 0:
+        if extraction.hole_count >= extraction.region_count * 3:
+            return ClassicSemanticWarning(
+                "classic_filled_many_holes",
+                "Esta imagem tem muitos buracos/recortes brancos; Classic Filled pode nao ser ideal. "
+                "Considere Classic Line Art ou Visual.",
+                "decide",
+            )
+    return None
 
 
 def _metrics(

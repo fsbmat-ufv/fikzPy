@@ -162,7 +162,7 @@ def _classic_semantic_config_from_options(
         max_points_per_line=8,
         split_long_paths=True,
     )
-    return ClassicSemanticConfig(tikz_export_config=export_config)
+    return ClassicSemanticConfig(tikz_export_config=export_config, vectorization_strategy=options.classic_strategy)
 
 
 def _processing_result_from_classic_semantic(

@@ -25,6 +25,7 @@ class TikzOptions:
     max_paths: int | None = None
     bezier_min_points: int = 4
     bezier_tension: float = 1.0
+    classic_strategy: str = "auto"
 
 
 _SAFE_COLOR = re.compile(r"^[A-Za-z][A-Za-z0-9!._-]*$")

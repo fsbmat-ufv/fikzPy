@@ -357,3 +357,48 @@ def test_fill_styles_are_preserved_in_validator_for_good_manual_primitives() -> 
     )
     result = validate_semantic_output(source, [primitive], config=VisualValidationConfig(minimum_acceptable_score=0.3))
     assert result.fidelity_score.raster_metrics.dark_mass_preservation_ratio > 0.5
+
+
+def test_classic_line_art_strategy_forces_strokes_with_no_fill_on_dino_photo() -> None:
+    image_path = Path(__file__).resolve().parent / "25.jpg"
+    if not image_path.exists():
+        pytest.skip("tests/25.jpg is not present in this checkout")
+
+    config = ClassicSemanticConfig(vectorization_strategy="line_art")
+    result = run_classic_semantic_pipeline(str(image_path), config)
+
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+    assert result.metrics.tikz_fill_commands == 0
+    # Strategy may still be rejected as underdrawn, but it must never become a filled silhouette.
+    assert "fill={rgb,255:red,0;green,0;blue,0}" not in result.tikz_code
+
+
+def test_classic_filled_strategy_generates_fill_for_simple_silhouette() -> None:
+    config = ClassicSemanticConfig(vectorization_strategy="filled")
+    result = run_classic_semantic_pipeline(silhouette_image(), config)
+
+    assert result.strategy_used is ClassicPipelineStrategy.BINARY_OUTLINE
+    assert result.metrics.filled_region_primitives > 0
+    assert result.metrics.thin_stroke_primitives == 0
+    assert "fill=" in result.tikz_code
+    assert result.accepted or result.rejection_reasons
+
+
+def test_classic_auto_strategy_prefers_line_art_when_ambiguous() -> None:
+    config = ClassicSemanticConfig(vectorization_strategy="auto")
+    result = run_classic_semantic_pipeline(line_art_image(), config)
+
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+
+
+def test_classic_auto_strategy_warns_instead_of_silent_fallback_on_mixed_complex_image() -> None:
+    image_path = Path(__file__).resolve().parent / "8.jpg"
+    if not image_path.exists():
+        pytest.skip("tests/8.jpg is not present in this checkout")
+
+    config = ClassicSemanticConfig(vectorization_strategy="auto")
+    result = run_classic_semantic_pipeline(str(image_path), config)
+
+    if not result.accepted:
+        assert any(warning.code == "classic_auto_recommend_visual" for warning in result.warnings)
+    assert "visual" not in result.tikz_code.lower()
