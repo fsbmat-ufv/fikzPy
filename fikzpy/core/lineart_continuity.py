@@ -405,8 +405,18 @@ def validate_lineart_balance(
     lineart_preserve_external_contour: bool,
     reject_overfilled_lineart: bool,
     reject_underdrawn_lineart: bool,
+    dark_mass_preservation_ratio: float | None = None,
+    suspicious_dark_mass_preservation_ratio: float = 1.2,
 ) -> LineArtBalanceResult:
-    """Validate a Classic line-art candidate against overfilled/underdrawn failure modes."""
+    """Validate a Classic line-art candidate against overfilled/underdrawn failure modes.
+
+    ``dark_mass_preservation_ratio`` is an optional cross-check from raster
+    validation: a line-art candidate that both fills a lot of area *and*
+    reports more dark mass than the source (ratio above
+    ``suspicious_dark_mass_preservation_ratio``) is treated as suspicious even
+    if the polygon-area fill ratio alone is borderline, since the rendered
+    silhouette is overrepresenting dark content the source never had.
+    """
     foreground = _normalize_mask(mask)
     fill_metrics = compute_lineart_fill_metrics(primitives, float(foreground.size))
 
@@ -415,6 +425,12 @@ def validate_lineart_balance(
         flags.extend(("excessive_filled_area", "artificial_black_mass", "overfilled_lineart"))
         if fill_metrics.filled_area_ratio > max_filled_area_ratio_for_lineart * 2.0:
             flags.append("lineart_converted_to_silhouette")
+    if (
+        dark_mass_preservation_ratio is not None
+        and dark_mass_preservation_ratio > suspicious_dark_mass_preservation_ratio
+        and fill_metrics.filled_region_count > 0
+    ):
+        flags.extend(("artificial_black_mass", "overfilled_lineart"))
     if fill_metrics.white_cutout_ratio > max_white_cutout_ratio_for_lineart:
         flags.append("excessive_white_cutouts")
     if continuity.foreground_recall < lineart_min_foreground_recall:

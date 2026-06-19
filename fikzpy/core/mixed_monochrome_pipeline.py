@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 
 from fikzpy.core.centerline_pipeline import CenterlineConfig, CenterlineResult, centerline_paths_to_polylines
-from fikzpy.core.centerline_pipeline import extract_centerlines
+from fikzpy.core.centerline_pipeline import extract_centerlines, skeletonize_mask
 from fikzpy.core.filled_region_extraction import FilledRegionExtractionConfig, FilledRegionExtractionResult
 from fikzpy.core.filled_region_extraction import extract_filled_regions
 from fikzpy.core.semantic_geometry import PolylinePrimitive, PrimitiveGroup, StrokeStyle
@@ -119,17 +119,29 @@ def split_foreground_layers(
     filled_region_min_ratio: float,
     thin_stroke_max_width: float,
     component_connectivity: int = 8,
+    max_skeleton_ratio_for_filled: float = 0.3,
 ) -> ForegroundLayerSplit:
-    """Split binary foreground into probable filled and thin-stroke masks."""
+    """Split binary foreground into probable filled and thin-stroke masks.
+
+    ``max_skeleton_ratio_for_filled`` rejects "filled" classification for
+    components whose skeleton already covers most of their pixels: dense
+    line-art (crosshatching, touching strokes) can locally satisfy area and
+    fill-ratio heuristics while still being a thin-stroke network rather than
+    a real filled blob. A genuine filled region collapses to a small medial
+    skeleton relative to its area; a thin-stroke network does not.
+    """
     foreground = _normalize_mask(mask)
     if int(filled_region_min_area) < 1:
         raise ValueError("filled_region_min_area must be positive.")
     fill_ratio_threshold = float(filled_region_min_ratio)
     thin_width = float(thin_stroke_max_width)
+    skeleton_ratio_limit = float(max_skeleton_ratio_for_filled)
     if not isfinite(fill_ratio_threshold) or fill_ratio_threshold < 0.0 or fill_ratio_threshold > 1.0:
         raise ValueError("filled_region_min_ratio must be between 0 and 1.")
     if not isfinite(thin_width) or thin_width <= 0.0:
         raise ValueError("thin_stroke_max_width must be finite and positive.")
+    if not isfinite(skeleton_ratio_limit) or skeleton_ratio_limit < 0.0 or skeleton_ratio_limit > 1.0:
+        raise ValueError("max_skeleton_ratio_for_filled must be between 0 and 1.")
     if component_connectivity not in {4, 8}:
         raise ValueError("component_connectivity must be 4 or 8.")
 
@@ -153,17 +165,19 @@ def split_foreground_layers(
         fill_ratio = float(area / bbox_area)
         component_mask = labels == component_id
         thickness = _component_max_thickness(component_mask)
+        skeleton_ratio = _component_skeleton_ratio(component_mask, area)
         large_area = area >= int(filled_region_min_area)
         minimum_dimension = min(width, height)
         compact = fill_ratio >= fill_ratio_threshold
-        thick = thickness > thin_width
+        thick = thickness > thin_width * 1.5
         compact_region = compact and minimum_dimension > thin_width
         large_compact_area = (
             area >= int(filled_region_min_area) * 6
             and fill_ratio >= fill_ratio_threshold * 0.5
             and minimum_dimension > thin_width
         )
-        clearly_filled = large_area and (thick or compact_region or large_compact_area)
+        skeleton_consistent_with_fill = skeleton_ratio <= skeleton_ratio_limit
+        clearly_filled = skeleton_consistent_with_fill and large_area and (thick or compact_region or large_compact_area)
         clearly_thin = not clearly_filled and thickness <= thin_width
         if clearly_filled:
             filled_mask |= component_mask
@@ -185,6 +199,7 @@ def split_foreground_layers(
                 "centroid": [round(float(centroids[component_id][0]), 3), round(float(centroids[component_id][1]), 3)],
                 "fill_ratio": round(fill_ratio, 6),
                 "max_thickness": round(thickness, 3),
+                "skeleton_ratio": round(skeleton_ratio, 6),
             }
         )
 
@@ -283,6 +298,7 @@ def extract_mixed_monochrome_primitives(
     filled_region_min_ratio: float,
     thin_stroke_max_width: float,
     component_connectivity: int = 8,
+    max_skeleton_ratio_for_filled: float = 0.3,
 ) -> MixedMonochromeResult:
     """Extract filled regions plus thin-stroke centerlines from a monochrome mask."""
     split = split_foreground_layers(
@@ -291,6 +307,7 @@ def extract_mixed_monochrome_primitives(
         filled_region_min_ratio=filled_region_min_ratio,
         thin_stroke_max_width=thin_stroke_max_width,
         component_connectivity=component_connectivity,
+        max_skeleton_ratio_for_filled=max_skeleton_ratio_for_filled,
     )
     filled = extract_filled_regions(split.filled_mask, filled_config)
     thin = extract_thin_strokes(split.thin_mask, centerline_config)
@@ -334,6 +351,20 @@ def extract_mixed_monochrome_primitives(
 def _component_max_thickness(component_mask: np.ndarray) -> float:
     distances = cv2.distanceTransform(component_mask.astype(np.uint8), cv2.DIST_L2, 3)
     return float(np.max(distances)) * 2.0 if distances.size else 0.0
+
+
+def _component_skeleton_ratio(component_mask: np.ndarray, area: int) -> float:
+    """Return skeleton-pixel-count / area for a component.
+
+    Low ratios indicate a compact filled blob (the skeleton collapses to a
+    small medial line). Ratios near 1 indicate the component is already
+    thin everywhere along its extent, i.e. a stroke or stroke network, even
+    if locally dense.
+    """
+    if area <= 0:
+        return 1.0
+    skeleton = skeletonize_mask(component_mask)
+    return float(np.count_nonzero(skeleton)) / float(area)
 
 
 def _normalize_mask(mask: np.ndarray) -> np.ndarray:

@@ -73,6 +73,8 @@ class ClassicSemanticConfig:
     filled_region_min_area: int = 48
     filled_region_min_ratio: float = 0.22
     thin_stroke_max_width: float = 3.2
+    filled_region_max_skeleton_ratio: float = 0.3
+    lineart_to_mixed_min_filled_area_ratio: float = 0.06
     component_connectivity: int = 8
     line_art_stroke_width: float = 0.45
     lineart_min_edge_recall: float = 0.35
@@ -139,6 +141,8 @@ class ClassicSemanticConfig:
             "minimum_filled_region_recall",
             "minimum_thin_stroke_recall",
             "filled_region_min_ratio",
+            "filled_region_max_skeleton_ratio",
+            "lineart_to_mixed_min_filled_area_ratio",
             "lineart_min_edge_recall",
             "lineart_min_foreground_recall",
             "lineart_min_contour_coverage",
@@ -208,6 +212,8 @@ class ClassicSemanticConfig:
             "filled_region_min_area": self.filled_region_min_area,
             "filled_region_min_ratio": self.filled_region_min_ratio,
             "thin_stroke_max_width": self.thin_stroke_max_width,
+            "filled_region_max_skeleton_ratio": self.filled_region_max_skeleton_ratio,
+            "lineart_to_mixed_min_filled_area_ratio": self.lineart_to_mixed_min_filled_area_ratio,
             "component_connectivity": self.component_connectivity,
             "line_art_stroke_width": self.line_art_stroke_width,
             "lineart_min_edge_recall": self.lineart_min_edge_recall,

@@ -250,6 +250,38 @@ class ClassicSemanticResult:
         }
 
 
+@dataclass(frozen=True)
+class _CandidateOutcome:
+    """Fully processed Classic strategy candidate, ready for comparison."""
+
+    decision: ClassicPipelineDecision
+    extraction: Any
+    raw_primitives: tuple[SemanticGeometry, ...]
+    fitted_primitives: tuple[SemanticGeometry, ...]
+    optimized_primitives: tuple[SemanticGeometry, ...]
+    fitting_results: tuple[PrimitiveFitResult, ...]
+    optimization_result: GeometryOptimizationResult
+    tikz_result: TikzExportResult
+    lineart_balance: LineArtBalanceResult | None
+    validation_result: VisualValidationResult | None
+    accepted: bool
+    rejection_reasons: tuple[str, ...]
+    warnings: tuple[ClassicSemanticWarning, ...]
+    stages: tuple[ClassicPipelineStageResult, ...]
+
+    @property
+    def score(self) -> float:
+        """Return a comparable fidelity score, defaulting to acceptance state."""
+        if self.validation_result is not None:
+            return self.validation_result.fidelity_score.overall_score
+        return 1.0 if self.accepted else 0.0
+
+    @property
+    def is_overfilled(self) -> bool:
+        """Return whether this candidate was rejected for overfilled line art."""
+        return "overfilled_lineart_rejected" in self.rejection_reasons
+
+
 class ClassicSemanticPipeline:
     """Run the isolated semantic Classic image-to-TikZ pipeline."""
 
@@ -261,13 +293,15 @@ class ClassicSemanticPipeline:
         if not self.config.enable_semantic_classic:
             raise ClassicSemanticPipelineError("Semantic Classic pipeline is disabled by configuration.")
         source = _normalize_image(image)
-        warnings: list[ClassicSemanticWarning] = []
-        stages: list[ClassicPipelineStageResult] = []
+        shared_stages: list[ClassicPipelineStageResult] = []
+        shared_warnings: list[ClassicSemanticWarning] = []
         try:
             classification = classify_image(source, self.config.image_classifier_config)
-            stages.append(_stage("classify", {"category": classification.category.value, "confidence": classification.confidence}))
+            shared_stages.append(
+                _stage("classify", {"category": classification.category.value, "confidence": classification.confidence})
+            )
             preprocessing = preprocess_image(source, self.config.preprocessing_config, category=classification.category)
-            stages.append(
+            shared_stages.append(
                 _stage(
                     "preprocess",
                     {
@@ -278,89 +312,61 @@ class ClassicSemanticPipeline:
                 )
             )
             decision = self._decide_strategy(classification, preprocessing)
-            warnings.extend(decision.warnings)
-            stages.append(_stage("decide", {"strategy": decision.strategy.value, "reason": decision.reason}))
-            extraction, raw_primitives = self._extract_primitives(preprocessing.binary_mask, decision)
-            extraction_warnings = _warnings_from_extraction(extraction)
-            warnings.extend(extraction_warnings)
-            stages.append(_stage("extract", {"raw_primitives": _object_count(raw_primitives)}, extraction_warnings))
 
-            fitting_results = tuple(fit_primitives(raw_primitives, self.config.fitting_config))
-            fitted_primitives = tuple(primitive for result in fitting_results for primitive in result.primitives)
-            fitting_warnings = _warnings_from_fitting(fitting_results)
-            warnings.extend(fitting_warnings)
-            stages.append(_stage("fit", {"fitted_primitives": _object_count(fitted_primitives)}, fitting_warnings))
-
-            optimization_result = optimize_fit_results(fitting_results, self.config.optimization_config)
-            optimized_primitives = tuple(optimization_result.primitives)
-            optimization_warnings = _warnings_from_optimization(optimization_result)
-            warnings.extend(optimization_warnings)
-            stages.append(
-                _stage(
-                    "optimize",
-                    {"optimized_primitives": _object_count(optimized_primitives), "success": optimization_result.success},
-                    optimization_warnings,
+            primary = self._run_candidate(source, classification, preprocessing, decision)
+            candidate = primary
+            if (
+                classification.category is ImageCategory.LINE_ART
+                and decision.strategy is ClassicPipelineStrategy.MIXED_MONOCHROME
+                and not primary.accepted
+            ):
+                fallback_decision = ClassicPipelineDecision(
+                    strategy=ClassicPipelineStrategy.LINE_ART,
+                    reason="line_art_fallback_after_rejected_mixed_monochrome",
+                    split=decision.split,
+                    category=decision.category,
+                    foreground_ratio=decision.foreground_ratio,
+                    dark_pixel_ratio=decision.dark_pixel_ratio,
+                    colored_pixel_ratio=decision.colored_pixel_ratio,
+                    edge_to_foreground_ratio=decision.edge_to_foreground_ratio,
                 )
-            )
-
-            tikz_result = export_primitives_to_tikz(optimized_primitives, self.config.tikz_export_config)
-            tikz_warnings = _warnings_from_tikz(tikz_result)
-            warnings.extend(tikz_warnings)
-            stages.append(_stage("export", {"draw_commands": tikz_result.metrics.draw_commands}, tikz_warnings))
-
-            lineart_balance: LineArtBalanceResult | None = None
-            if isinstance(extraction, LineArtExtractionResult):
-                lineart_balance = validate_lineart_balance(
-                    preprocessing.binary_mask,
-                    optimized_primitives,
-                    extraction.continuity_metrics,
-                    max_filled_area_ratio_for_lineart=self.config.max_filled_area_ratio_for_lineart,
-                    max_white_cutout_ratio_for_lineart=self.config.max_white_cutout_ratio_for_lineart,
-                    lineart_min_edge_recall=self.config.lineart_min_edge_recall,
-                    lineart_min_foreground_recall=self.config.lineart_min_foreground_recall,
-                    lineart_min_contour_coverage=self.config.lineart_min_contour_coverage,
-                    lineart_max_fragmentation_ratio=self.config.lineart_max_fragmentation_ratio,
-                    lineart_preserve_external_contour=self.config.lineart_preserve_external_contour,
-                    reject_overfilled_lineart=self.config.reject_overfilled_lineart,
-                    reject_underdrawn_lineart=self.config.reject_underdrawn_lineart,
-                )
-                lineart_warnings = [
-                    ClassicSemanticWarning(flag, f"Line-art balance flag: {flag}", "lineart_balance")
-                    for flag in lineart_balance.flags
-                ]
-                warnings.extend(lineart_warnings)
-                stages.append(
-                    _stage(
-                        "lineart_balance",
-                        {"accepted": lineart_balance.accepted, "flags": list(lineart_balance.flags)},
-                        lineart_warnings,
-                        status=ClassicPipelineStatus.ACCEPTED if lineart_balance.accepted else ClassicPipelineStatus.REJECTED,
+                fallback = self._run_candidate(source, classification, preprocessing, fallback_decision)
+                candidate = _select_best_candidate(primary, fallback)
+                shared_warnings.append(
+                    ClassicSemanticWarning(
+                        "mixed_monochrome_rejected_fallback_attempted",
+                        "Rejected MIXED_MONOCHROME output triggered a LINE_ART fallback candidate.",
+                        "fallback",
                     )
                 )
-
-            validation_result: VisualValidationResult | None = None
-            if self.config.validation_policy is not ClassicValidationPolicy.DISABLED:
-                validation_result = validate_semantic_output(
-                    source,
-                    optimized_primitives,
-                    tikz_result,
-                    self.config.validation_config(),
-                )
-                validation_warnings = _warnings_from_validation(validation_result)
-                warnings.extend(validation_warnings)
-                stages.append(
+                if candidate is fallback:
+                    shared_warnings.append(
+                        ClassicSemanticWarning(
+                            "mixed_monochrome_rejected_using_line_art_fallback",
+                            "Selected the LINE_ART fallback candidate instead of the rejected overfilled MIXED_MONOCHROME output.",
+                            "fallback",
+                        )
+                    )
+                shared_stages.append(
                     _stage(
-                        "validate",
+                        "strategy_fallback",
                         {
-                            "accepted": validation_result.accepted,
-                            "score": validation_result.fidelity_score.overall_score,
+                            "primary_strategy": primary.decision.strategy.value,
+                            "primary_accepted": primary.accepted,
+                            "fallback_strategy": fallback.decision.strategy.value,
+                            "fallback_accepted": fallback.accepted,
+                            "selected_strategy": candidate.decision.strategy.value,
                         },
-                        validation_warnings,
-                        status=ClassicPipelineStatus.ACCEPTED if validation_result.accepted else ClassicPipelineStatus.REJECTED,
+                        status=ClassicPipelineStatus.ACCEPTED if candidate.accepted else ClassicPipelineStatus.REJECTED,
                     )
                 )
 
-            accepted, rejection_reasons = self._acceptance(validation_result, tikz_result, lineart_balance)
+            decision = candidate.decision
+            warnings = [*shared_warnings, *decision.warnings, *candidate.warnings]
+            stages = (*shared_stages, _stage("decide", {"strategy": decision.strategy.value, "reason": decision.reason}), *candidate.stages)
+
+            accepted = candidate.accepted
+            rejection_reasons = candidate.rejection_reasons
             status = ClassicPipelineStatus.ACCEPTED if accepted else ClassicPipelineStatus.REJECTED
             if not accepted and self.config.fallback_policy is ClassicFallbackPolicy.LEGACY_EXPLICIT:
                 warnings.append(
@@ -375,23 +381,23 @@ class ClassicSemanticPipeline:
                 source,
                 classification,
                 decision,
-                raw_primitives,
-                fitted_primitives,
-                optimized_primitives,
-                tikz_result,
-                validation_result,
-                extraction,
-                lineart_balance,
+                candidate.raw_primitives,
+                candidate.fitted_primitives,
+                candidate.optimized_primitives,
+                candidate.tikz_result,
+                candidate.validation_result,
+                candidate.extraction,
+                candidate.lineart_balance,
             )
             payload = {
                 "strategy": decision.strategy.value,
                 "classification": classification.to_dict(),
                 "preprocessing": preprocessing.to_dict(),
-                "raw": [primitive.to_dict() for primitive in raw_primitives],
-                "fitted": [primitive.to_dict() for primitive in fitted_primitives],
-                "optimization": optimization_result.to_dict(),
-                "tikz": tikz_result.to_dict(),
-                "validation": validation_result.to_dict() if validation_result is not None else None,
+                "raw": [primitive.to_dict() for primitive in candidate.raw_primitives],
+                "fitted": [primitive.to_dict() for primitive in candidate.fitted_primitives],
+                "optimization": candidate.optimization_result.to_dict(),
+                "tikz": candidate.tikz_result.to_dict(),
+                "validation": candidate.validation_result.to_dict() if candidate.validation_result is not None else None,
                 "metrics": metrics.to_dict(),
                 "warnings": [warning.to_dict() for warning in warnings],
                 "accepted": accepted,
@@ -399,15 +405,15 @@ class ClassicSemanticPipeline:
             }
             digest = _hash_payload(payload)
             result = ClassicSemanticResult(
-                tikz_code=tikz_result.code,
+                tikz_code=candidate.tikz_result.code,
                 strategy_used=decision.strategy,
                 classification_result=classification,
                 preprocessing_result=preprocessing,
-                raw_primitives=raw_primitives,
-                fitted_primitives=fitted_primitives,
-                optimized_primitives=optimized_primitives,
-                tikz_export_result=tikz_result,
-                validation_result=validation_result,
+                raw_primitives=candidate.raw_primitives,
+                fitted_primitives=candidate.fitted_primitives,
+                optimized_primitives=candidate.optimized_primitives,
+                tikz_export_result=candidate.tikz_result,
+                validation_result=candidate.validation_result,
                 metrics=metrics,
                 warnings=tuple(warnings),
                 accepted=accepted,
@@ -415,9 +421,9 @@ class ClassicSemanticPipeline:
                 deterministic_hash=digest,
                 status=status,
                 decision=decision,
-                fitting_results=fitting_results,
-                optimization_result=optimization_result,
-                extraction_result=extraction,
+                fitting_results=candidate.fitting_results,
+                optimization_result=candidate.optimization_result,
+                extraction_result=candidate.extraction,
                 stage_results=tuple(stages),
             )
             _log_result(result)
@@ -426,6 +432,135 @@ class ClassicSemanticPipeline:
             if self.config.strict:
                 raise ClassicSemanticPipelineError(str(exc)) from exc
             raise
+
+    def _run_candidate(
+        self,
+        source: np.ndarray,
+        classification: ImageClassificationResult,
+        preprocessing: PreprocessingResult,
+        decision: ClassicPipelineDecision,
+    ) -> _CandidateOutcome:
+        """Run extraction through acceptance for one strategy decision."""
+        warnings: list[ClassicSemanticWarning] = list(decision.warnings)
+        stages: list[ClassicPipelineStageResult] = []
+
+        extraction, raw_primitives = self._extract_primitives(preprocessing.binary_mask, decision)
+        extraction_warnings = _warnings_from_extraction(extraction)
+        warnings.extend(extraction_warnings)
+        stages.append(_stage("extract", {"raw_primitives": _object_count(raw_primitives)}, extraction_warnings))
+
+        fitting_results = tuple(fit_primitives(raw_primitives, self.config.fitting_config))
+        fitted_primitives = tuple(primitive for result in fitting_results for primitive in result.primitives)
+        fitting_warnings = _warnings_from_fitting(fitting_results)
+        warnings.extend(fitting_warnings)
+        stages.append(_stage("fit", {"fitted_primitives": _object_count(fitted_primitives)}, fitting_warnings))
+
+        optimization_result = optimize_fit_results(fitting_results, self.config.optimization_config)
+        optimized_primitives = tuple(optimization_result.primitives)
+        optimization_warnings = _warnings_from_optimization(optimization_result)
+        warnings.extend(optimization_warnings)
+        stages.append(
+            _stage(
+                "optimize",
+                {"optimized_primitives": _object_count(optimized_primitives), "success": optimization_result.success},
+                optimization_warnings,
+            )
+        )
+
+        tikz_result = export_primitives_to_tikz(optimized_primitives, self.config.tikz_export_config)
+        tikz_warnings = _warnings_from_tikz(tikz_result)
+        warnings.extend(tikz_warnings)
+        stages.append(_stage("export", {"draw_commands": tikz_result.metrics.draw_commands}, tikz_warnings))
+
+        validation_result: VisualValidationResult | None = None
+        if self.config.validation_policy is not ClassicValidationPolicy.DISABLED:
+            validation_result = validate_semantic_output(
+                source,
+                optimized_primitives,
+                tikz_result,
+                self.config.validation_config(),
+            )
+            validation_warnings = _warnings_from_validation(validation_result)
+            warnings.extend(validation_warnings)
+            stages.append(
+                _stage(
+                    "validate",
+                    {
+                        "accepted": validation_result.accepted,
+                        "score": validation_result.fidelity_score.overall_score,
+                    },
+                    validation_warnings,
+                    status=ClassicPipelineStatus.ACCEPTED if validation_result.accepted else ClassicPipelineStatus.REJECTED,
+                )
+            )
+
+        lineart_balance: LineArtBalanceResult | None = None
+        continuity_metrics: LineArtContinuityMetrics | None = None
+        if isinstance(extraction, LineArtExtractionResult):
+            continuity_metrics = extraction.continuity_metrics
+        elif classification.category is ImageCategory.LINE_ART:
+            rendered_mask = render_polyline_primitives_mask(
+                optimized_primitives,
+                (preprocessing.binary_mask.shape[1], preprocessing.binary_mask.shape[0]),
+            )
+            continuity_metrics = compute_lineart_continuity_metrics(
+                preprocessing.binary_mask,
+                None,
+                component_connectivity=self.config.component_connectivity,
+                rendered_override=rendered_mask,
+            )
+        if continuity_metrics is not None:
+            dark_mass_preservation_ratio = (
+                validation_result.fidelity_score.raster_metrics.dark_mass_preservation_ratio
+                if validation_result is not None
+                else None
+            )
+            lineart_balance = validate_lineart_balance(
+                preprocessing.binary_mask,
+                optimized_primitives,
+                continuity_metrics,
+                max_filled_area_ratio_for_lineart=self.config.max_filled_area_ratio_for_lineart,
+                max_white_cutout_ratio_for_lineart=self.config.max_white_cutout_ratio_for_lineart,
+                lineart_min_edge_recall=self.config.lineart_min_edge_recall,
+                lineart_min_foreground_recall=self.config.lineart_min_foreground_recall,
+                lineart_min_contour_coverage=self.config.lineart_min_contour_coverage,
+                lineart_max_fragmentation_ratio=self.config.lineart_max_fragmentation_ratio,
+                lineart_preserve_external_contour=self.config.lineart_preserve_external_contour,
+                reject_overfilled_lineart=self.config.reject_overfilled_lineart,
+                reject_underdrawn_lineart=self.config.reject_underdrawn_lineart,
+                dark_mass_preservation_ratio=dark_mass_preservation_ratio,
+            )
+            lineart_warnings = [
+                ClassicSemanticWarning(flag, f"Line-art balance flag: {flag}", "lineart_balance")
+                for flag in lineart_balance.flags
+            ]
+            warnings.extend(lineart_warnings)
+            stages.append(
+                _stage(
+                    "lineart_balance",
+                    {"accepted": lineart_balance.accepted, "flags": list(lineart_balance.flags)},
+                    lineart_warnings,
+                    status=ClassicPipelineStatus.ACCEPTED if lineart_balance.accepted else ClassicPipelineStatus.REJECTED,
+                )
+            )
+
+        accepted, rejection_reasons = self._acceptance(validation_result, tikz_result, lineart_balance)
+        return _CandidateOutcome(
+            decision=decision,
+            extraction=extraction,
+            raw_primitives=raw_primitives,
+            fitted_primitives=fitted_primitives,
+            optimized_primitives=optimized_primitives,
+            fitting_results=fitting_results,
+            optimization_result=optimization_result,
+            tikz_result=tikz_result,
+            lineart_balance=lineart_balance,
+            validation_result=validation_result,
+            accepted=accepted,
+            rejection_reasons=rejection_reasons,
+            warnings=tuple(warnings),
+            stages=tuple(stages),
+        )
 
     def _decide_strategy(
         self,
@@ -495,7 +630,34 @@ class ClassicSemanticPipeline:
             filled_region_min_ratio=self.config.filled_region_min_ratio,
             thin_stroke_max_width=self.config.thin_stroke_max_width,
             component_connectivity=self.config.component_connectivity,
+            max_skeleton_ratio_for_filled=self.config.filled_region_max_skeleton_ratio,
         )
+        if classification.category is ImageCategory.LINE_ART:
+            filled_area = sum(
+                int(summary.get("area", 0))
+                for summary in split.component_summaries
+                if summary.get("layer") == "filled_region"
+            )
+            filled_area_ratio = float(filled_area) / float(max(1, preprocessing.binary_mask.size))
+            if filled_area_ratio < self.config.lineart_to_mixed_min_filled_area_ratio:
+                warnings.append(
+                    ClassicSemanticWarning(
+                        "lineart_weak_filled_evidence",
+                        "Line-art classification lacks strong filled-region evidence; keeping LINE_ART strategy.",
+                        "decide",
+                    )
+                )
+                return ClassicPipelineDecision(
+                    strategy=ClassicPipelineStrategy.LINE_ART,
+                    reason="line art classification without strong filled-region evidence",
+                    split=split,
+                    category=classification.category,
+                    foreground_ratio=metrics.foreground_ratio,
+                    dark_pixel_ratio=metrics.dark_pixel_ratio,
+                    colored_pixel_ratio=metrics.colored_pixel_ratio,
+                    edge_to_foreground_ratio=metrics.edge_to_foreground_ratio,
+                    warnings=tuple(warnings),
+                )
         if self.config.mixed_monochrome_enabled and split.filled_count > 0 and split.thin_count > 0:
             return ClassicPipelineDecision(
                 strategy=ClassicPipelineStrategy.MIXED_MONOCHROME,
@@ -623,6 +785,7 @@ class ClassicSemanticPipeline:
                 filled_region_min_ratio=self.config.filled_region_min_ratio,
                 thin_stroke_max_width=self.config.thin_stroke_max_width,
                 component_connectivity=self.config.component_connectivity,
+                max_skeleton_ratio_for_filled=self.config.filled_region_max_skeleton_ratio,
             )
             return mixed, tuple(mixed.primitives)
         raise ClassicSemanticPipelineError(f"Unsupported Classic strategy: {strategy.value}")
@@ -651,6 +814,26 @@ class ClassicSemanticPipeline:
             reasons.append("score_below_classic_minimum")
         deduped = tuple(dict.fromkeys(reasons))
         return not deduped and validation_result.accepted, deduped
+
+
+def _select_best_candidate(primary: _CandidateOutcome, fallback: _CandidateOutcome) -> _CandidateOutcome:
+    """Pick between a rejected MIXED_MONOCHROME candidate and a LINE_ART fallback.
+
+    Never prefers a rejected/overfilled MIXED_MONOCHROME candidate over an
+    accepted LINE_ART fallback. When both are accepted with close scores,
+    the safer LINE_ART candidate wins.
+    """
+    if fallback.accepted and (not primary.accepted or primary.is_overfilled):
+        return fallback
+    if primary.accepted and not fallback.accepted:
+        return primary
+    if primary.accepted and fallback.accepted:
+        if abs(primary.score - fallback.score) <= 0.05:
+            return fallback
+        return primary if primary.score > fallback.score else fallback
+    if primary.is_overfilled:
+        return fallback
+    return fallback if fallback.score >= primary.score else primary
 
 
 def detect_mixed_monochrome_image(

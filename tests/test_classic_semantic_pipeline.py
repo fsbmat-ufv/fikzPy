@@ -327,6 +327,26 @@ def test_color_regions_conservative_warning_and_silhouette_acceptance() -> None:
     assert silhouette.accepted
 
 
+def test_dino_photo_classic_line_art_is_not_overfilled_into_silhouette() -> None:
+    image_path = Path(__file__).resolve().parent / "25.jpg"
+    if not image_path.exists():
+        pytest.skip("tests/25.jpg is not present in this checkout")
+
+    result = run_classic_semantic_pipeline(str(image_path))
+
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+    assert result.metrics.filled_region_primitives <= 3
+    assert result.metrics.tikz_fill_commands <= 3
+
+    if result.metrics.filled_region_primitives >= 30 or result.metrics.tikz_fill_commands >= 30:
+        assert result.metrics.lineart_regression_flags
+
+    first_draw_index = result.tikz_code.find("\\draw")
+    assert first_draw_index != -1
+    first_draw_block = result.tikz_code[first_draw_index : result.tikz_code.find("\\draw", first_draw_index + 1)]
+    assert "fill={rgb,255:red,0;green,0;blue,0}" not in first_draw_block
+
+
 def test_fill_styles_are_preserved_in_validator_for_good_manual_primitives() -> None:
     source = filled_rectangle_image()
     primitive = PolylinePrimitive(
