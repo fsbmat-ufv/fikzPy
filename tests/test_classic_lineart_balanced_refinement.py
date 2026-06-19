@@ -333,3 +333,63 @@ def test_compute_lineart_continuity_metrics_handles_empty_mask() -> None:
     metrics = compute_lineart_continuity_metrics(empty_mask, None)
     assert metrics.foreground_recall == 1.0
     assert metrics.components_before == 0
+
+
+def test_pure_line_art_is_never_rejected_for_filled_region_or_dark_mass_criteria() -> None:
+    """LINE_ART intentionally produces no fill; filled/dark-mass fidelity
+    thresholds (tuned for filled silhouettes) must not gate its acceptance."""
+    config = ClassicSemanticConfig(
+        minimum_filled_region_recall=0.99,
+        minimum_acceptance_score=0.99,
+    )
+    result = run_classic_semantic_pipeline(dinosaur_lineart_image(), config)
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+    forbidden = {
+        "filled_region_recall_below_classic_minimum",
+        "filled_region_score_below_minimum",
+        "score_below_classic_minimum",
+        "overall_score_below_minimum",
+        "fidelity_score_below_minimum",
+        "dark_regions_lost",
+        "foreground_iou_below_minimum",
+    }
+    assert not (forbidden & set(result.rejection_reasons))
+    assert result.accepted
+
+
+def test_underdrawn_real_rejection_is_based_on_recall_thresholds_not_fill() -> None:
+    """A genuinely underdrawn LINE_ART candidate is rejected via continuity
+    recall/coverage thresholds, never via filled-region or fill-based flags."""
+    config = ClassicSemanticConfig(
+        lineart_min_edge_recall=0.99,
+        lineart_min_foreground_recall=0.99,
+        lineart_min_contour_coverage=0.99,
+        enable_lineart_outline_recovery=False,
+    )
+    result = run_classic_semantic_pipeline(dinosaur_lineart_image(), config)
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+    assert not result.accepted
+    assert result.rejection_reasons == ("underdrawn_lineart_rejected",)
+    assert "underdrawn_lineart" in result.metrics.lineart_regression_flags
+    assert "overfilled_lineart" not in result.metrics.lineart_regression_flags
+    assert result.metrics.filled_region_primitives == 0
+    assert result.metrics.tikz_fill_commands == 0
+
+
+def test_lineart_recovery_defaults_preserve_more_detail() -> None:
+    """Outline recovery and centerline simplification defaults must favor
+    preserving real contour detail over aggressive point reduction."""
+    config = ClassicSemanticConfig()
+    assert config.outline_recovery_max_components >= 48
+    assert config.outline_recovery_simplification_tolerance <= 0.002
+    assert config.centerline_config.simplification_tolerance <= 0.4
+
+    image_path = Path(__file__).resolve().parent / "25.jpg"
+    if not image_path.exists():
+        pytest.skip("tests/25.jpg is not present in this checkout")
+    result = run_classic_semantic_pipeline(str(image_path), config)
+    assert result.strategy_used is ClassicPipelineStrategy.LINE_ART
+    assert result.metrics.outline_recovery_count > 24
+    assert result.metrics.filled_region_primitives == 0
+    assert result.metrics.tikz_fill_commands == 0
+    assert not any(warning.code == "outline_recovery_max_components_reached" for warning in result.warnings)

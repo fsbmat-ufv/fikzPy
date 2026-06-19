@@ -89,11 +89,11 @@ class ClassicSemanticConfig:
     reject_overfilled_lineart: bool = True
     max_filled_area_ratio_for_lineart: float = 0.06
     max_white_cutout_ratio_for_lineart: float = 0.03
-    outline_recovery_max_components: int = 24
-    outline_recovery_simplification_tolerance: float = 0.01
+    outline_recovery_max_components: int = 48
+    outline_recovery_simplification_tolerance: float = 0.0015
     preprocessing_config: PreprocessingConfig = field(default_factory=PreprocessingConfig)
     image_classifier_config: ImageClassifierConfig = field(default_factory=ImageClassifierConfig)
-    centerline_config: CenterlineConfig = field(default_factory=CenterlineConfig)
+    centerline_config: CenterlineConfig = field(default_factory=lambda: CenterlineConfig(simplification_tolerance=0.35))
     fitting_config: PrimitiveFittingConfig = field(default_factory=PrimitiveFittingConfig)
     optimization_config: GeometryOptimizationConfig = field(default_factory=GeometryOptimizationConfig)
     tikz_export_config: TikzExportConfig = field(

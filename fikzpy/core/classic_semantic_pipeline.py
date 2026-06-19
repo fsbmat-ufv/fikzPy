@@ -38,6 +38,26 @@ class ClassicSemanticPipelineError(RuntimeError):
     """Raised when the semantic Classic pipeline cannot produce a result."""
 
 
+_LINEART_EXEMPT_REJECTION_REASONS = frozenset(
+    {
+        "overall_score_below_minimum",
+        "fidelity_score_below_minimum",
+        "filled_region_score_below_minimum",
+        "foreground_iou_below_minimum",
+        "dark_regions_lost",
+    }
+)
+"""Fidelity-score rejection reasons tuned for filled silhouettes.
+
+Pure line art intentionally produces no fill and little dark mass, and the
+generic foreground/fidelity scores are computed against the full source
+image (including photographic shading a line-art trace never reproduces),
+so these reasons do not indicate a real regression for that strategy.
+Acceptance for LINE_ART instead rests on continuity (edge/foreground/contour
+recall and fragmentation, via ``lineart_balance``) and thin-stroke signals,
+which remain in force."""
+
+
 @dataclass(frozen=True)
 class LineArtExtractionResult:
     """Diagnostic wrapper for the balanced LINE_ART extraction path."""
@@ -544,7 +564,12 @@ class ClassicSemanticPipeline:
                 )
             )
 
-        accepted, rejection_reasons = self._acceptance(validation_result, tikz_result, lineart_balance)
+        is_pure_lineart = (
+            classification.category is ImageCategory.LINE_ART and decision.strategy is ClassicPipelineStrategy.LINE_ART
+        )
+        accepted, rejection_reasons = self._acceptance(
+            validation_result, tikz_result, lineart_balance, is_pure_lineart=is_pure_lineart
+        )
         return _CandidateOutcome(
             decision=decision,
             extraction=extraction,
@@ -795,7 +820,18 @@ class ClassicSemanticPipeline:
         validation_result: VisualValidationResult | None,
         tikz_result: TikzExportResult,
         lineart_balance: LineArtBalanceResult | None = None,
+        *,
+        is_pure_lineart: bool = False,
     ) -> tuple[bool, tuple[str, ...]]:
+        """Decide acceptance for one candidate's tikz/validation/lineart-balance output.
+
+        ``is_pure_lineart`` is true when the image was classified as line art
+        and LINE_ART was the strategy actually used: such a candidate never
+        produces filled regions or dark mass by design, so the filled-region
+        and dark-mass-based fidelity criteria (tuned for filled silhouettes)
+        do not apply. Acceptance instead rests on continuity/thin-stroke
+        signals from ``lineart_balance`` and the raster thin-stroke recall.
+        """
         reasons: list[str] = []
         if not tikz_result.code.strip() or tikz_result.metrics.draw_commands <= 0:
             reasons.append("empty_tikz_output")
@@ -804,12 +840,20 @@ class ClassicSemanticPipeline:
         if validation_result is None:
             deduped = tuple(dict.fromkeys(reasons))
             return not deduped, deduped
-        reasons.extend(validation_result.rejection_reasons)
+        validation_reasons = validation_result.rejection_reasons
+        if is_pure_lineart:
+            validation_reasons = tuple(
+                reason for reason in validation_reasons if reason not in _LINEART_EXEMPT_REJECTION_REASONS
+            )
+        reasons.extend(validation_reasons)
         raster = validation_result.fidelity_score.raster_metrics
-        if raster.filled_region_recall < self.config.minimum_filled_region_recall:
+        if not is_pure_lineart and raster.filled_region_recall < self.config.minimum_filled_region_recall:
             reasons.append("filled_region_recall_below_classic_minimum")
         if raster.thin_stroke_recall < self.config.minimum_thin_stroke_recall:
             reasons.append("thin_stroke_recall_below_classic_minimum")
+        if is_pure_lineart:
+            deduped = tuple(dict.fromkeys(reasons))
+            return not deduped, deduped
         if validation_result.fidelity_score.overall_score < self.config.minimum_acceptance_score:
             reasons.append("score_below_classic_minimum")
         deduped = tuple(dict.fromkeys(reasons))
