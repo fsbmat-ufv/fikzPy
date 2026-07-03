@@ -1,0 +1,34 @@
+﻿fikzPy — Informações de criação
+========================================
+
+Autor:   Fernando de Souza Bastos
+E-mail:  fernando.bastos@ufv.br
+
+Sobre o software
+----------------
+O fikzPy foi criado com o objetivo de auxiliar na criação de imagens
+TikZ e na criação de atividades educacionais. Ele converte imagens em
+código TikZ editável, permitindo que professores e pesquisadores
+produzam figuras vetoriais de alta qualidade para documentos LaTeX,
+listas de exercícios, provas e materiais didáticos.
+
+O que este instalador faz
+-------------------------
+1. Verifica se o Python 3.10 ou superior está instalado no computador.
+   Caso não esteja, oferece o download e a instalação automática do
+   Python, ou orienta a instalá-lo manualmente antes de continuar.
+2. Copia o fikzPy para o seu computador.
+3. Cria um ambiente Python isolado e instala automaticamente todos os
+   pacotes necessários (numpy, OpenCV, PySide6, scikit-image, svg2tikz).
+   Esta etapa exige conexão com a internet e pode demorar alguns minutos.
+4. Cria atalhos no Menu Iniciar (e, se desejar, na Área de Trabalho).
+
+Observação
+----------
+Para compilar e visualizar o código TikZ dentro do programa é
+recomendado ter uma distribuição LaTeX instalada (MiKTeX ou TeX Live),
+com o pdflatex disponível. Esta etapa é opcional: o fikzPy gera o
+código TikZ mesmo sem o LaTeX instalado.
+
+Licença: MIT — consulte o arquivo LICENSE.
+Projeto: https://github.com/fsbmat-ufv/fikzPy

@@ -1,0 +1,18 @@
+# Dependencias principais do fikzPy
+numpy>=2.1
+opencv-python>=4.8,<5
+PySide6>=6.6
+scikit-image>=0.21
+# Dependencias de runtime do inkex (o inkex em si e o svg2tikz sao instalados
+# com --no-deps pelo instalar_dependencias.bat: o inkex 1.4.0 declara
+# numpy<2.0, que nao tem wheels para Python 3.13, mas funciona normalmente
+# com numpy 2.x; versoes mais novas do inkex exigem pygobject, que nao
+# instala no Windows)
+cssselect>=1.2,<2
+lxml>=4.5,<6
+packaging>=20.3
+Pillow>=7
+pyparsing>=3.0.9
+pyserial>=3.4,<4
+scour>=0.37,<0.38
+tinycss2>=1.0.1,<2

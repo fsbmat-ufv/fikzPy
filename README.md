@@ -23,6 +23,17 @@ file.
 
 ## Installation
 
+### Windows installer (recommended for end users)
+
+Download and run `fikzPy-Setup-<version>.exe`. The installer shows the
+authorship information, checks for Python 3.10+ (offering to download and
+install it automatically when missing), copies the application, installs every
+required package into an isolated virtual environment, and creates Start Menu
+and Desktop shortcuts. See [installer/README.md](installer/README.md) for how
+to build the installer from source.
+
+### From source (developers)
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
