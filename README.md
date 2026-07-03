@@ -25,12 +25,20 @@ file.
 
 ### Windows installer (recommended for end users)
 
-Download and run `fikzPy-Setup-<version>.exe`. The installer shows the
-authorship information, checks for Python 3.10+ (offering to download and
-install it automatically when missing), copies the application, installs every
-required package into an isolated virtual environment, and creates Start Menu
-and Desktop shortcuts. See [installer/README.md](installer/README.md) for how
-to build the installer from source.
+1. Download `fikzPy-Setup-<version>.exe` from the
+   [latest release](https://github.com/fsbmat-ufv/fikzPy/releases/latest).
+2. Run the installer. It shows the authorship information, checks for
+   Python 3.10+ (offering to download and install it automatically when
+   missing), copies the application, installs every required package into an
+   isolated virtual environment, and creates Start Menu and Desktop shortcuts.
+3. Launch fikzPy from the Start Menu shortcut.
+
+An internet connection is required during installation (the Python packages
+are downloaded). A LaTeX distribution (MiKTeX or TeX Live) is optional and
+only needed to compile the generated TikZ to PDF inside the application.
+
+See [installer/README.md](installer/README.md) for how to build the installer
+from source.
 
 ### From source (developers)
 
@@ -197,12 +205,9 @@ combo box.
 - Add more examples and gallery documentation.
 - Add CI for tests and packaging.
 
-## Repository
+## Author
 
-Prepared for:
+Created by Fernando de Souza Bastos (fernando.bastos@ufv.br) to help with the
+creation of TikZ images and educational activities.
 
-```text
-https://github.com/fsbmat-ufv/fikzPy.git
-```
-
-Push only after local validation and review.
+Repository: <https://github.com/fsbmat-ufv/fikzPy>
