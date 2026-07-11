@@ -137,3 +137,39 @@ def test_contornos_selection_keeps_contours_flow_unaffected_by_classic_strategy(
     settings = window.processing_settings()
 
     assert settings.vectorization_mode == "contours"
+
+
+def test_dot_to_dot_panel_visible_only_for_ponto_a_ponto() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Visual"))
+    assert window.dot_to_dot_group.isHidden()
+
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
+    assert not window.dot_to_dot_group.isHidden()
+
+
+def test_dot_to_dot_config_reflects_panel_values() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
+
+    window.dtd_total_points_spin.setValue(24)
+    window.dtd_start_number_spin.setValue(5)
+    window.dtd_point_radius_spin.setValue(3.0)
+    window.dtd_label_offset_spin.setValue(0.5)
+    window.dtd_include_internal_check.setChecked(True)
+    window.dtd_preserve_details_check.setChecked(False)
+    window.dtd_direction_combo.setCurrentIndex(window.dtd_direction_combo.findText("Invertida"))
+
+    config = window.dot_to_dot_config()
+
+    assert config.generation_mode.value == "full_figure"
+    assert config.total_points == 24
+    assert config.start_number == 5
+    assert config.point_radius == 3.0
+    assert config.label_offset == 0.5
+    assert config.include_internal_contours is True
+    assert config.preserve_internal_details is False
+    assert config.direction.value == "reverse"

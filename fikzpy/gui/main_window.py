@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from fikzpy.core.diagnostics import log_event, sha256_file
+from fikzpy.core.dot_to_dot import DotToDotConfig
 from fikzpy.core.image_processor import ProcessingResult, ProcessingSettings, load_image
 from fikzpy.core.tikz_generator import TikzOptions, wrap_standalone_document
 from fikzpy.core.tikz_pipeline import TikzBuildResult, build_tikz_from_image
@@ -208,6 +210,8 @@ class MainWindow(QMainWindow):
         regenerate_button.clicked.connect(self.generate_tikz)
         form.addRow("", regenerate_button)
 
+        self._build_dot_to_dot_group(form)
+
         for widget in (
             self.smoothing_spin,
             self.canny_low_spin,
@@ -222,10 +226,81 @@ class MainWindow(QMainWindow):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
         self.vectorization_mode_combo.currentIndexChanged.connect(self._settings_changed)
+        self.vectorization_mode_combo.currentIndexChanged.connect(self._update_dot_to_dot_visibility)
         self.line_color_edit.editingFinished.connect(self._settings_changed)
+
+        self._update_dot_to_dot_visibility()
 
         dock.setWidget(panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    def _build_dot_to_dot_group(self, form: QFormLayout) -> None:
+        """Build the Ponto a Ponto options panel (shown only for that mode)."""
+        self.dot_to_dot_group = QGroupBox("Ponto a Ponto")
+        group_form = QFormLayout(self.dot_to_dot_group)
+
+        self.dtd_submode_combo = QComboBox()
+        self.dtd_submode_combo.addItem("Figura inteira", "full_figure")
+        group_form.addRow("Submodo", self.dtd_submode_combo)
+
+        self.dtd_total_points_spin = QSpinBox()
+        self.dtd_total_points_spin.setRange(2, 500)
+        self.dtd_total_points_spin.setValue(20)
+        group_form.addRow("Numero de pontos", self.dtd_total_points_spin)
+
+        self.dtd_start_number_spin = QSpinBox()
+        self.dtd_start_number_spin.setRange(0, 9999)
+        self.dtd_start_number_spin.setValue(1)
+        group_form.addRow("Numero inicial", self.dtd_start_number_spin)
+
+        self.dtd_point_radius_spin = QDoubleSpinBox()
+        self.dtd_point_radius_spin.setRange(0.2, 20.0)
+        self.dtd_point_radius_spin.setDecimals(2)
+        self.dtd_point_radius_spin.setSingleStep(0.5)
+        self.dtd_point_radius_spin.setValue(2.0)
+        group_form.addRow("Tamanho dos pontos (pt)", self.dtd_point_radius_spin)
+
+        self.dtd_label_offset_spin = QDoubleSpinBox()
+        self.dtd_label_offset_spin.setRange(0.0, 5.0)
+        self.dtd_label_offset_spin.setDecimals(2)
+        self.dtd_label_offset_spin.setSingleStep(0.05)
+        self.dtd_label_offset_spin.setValue(0.35)
+        group_form.addRow("Distancia dos numeros", self.dtd_label_offset_spin)
+
+        self.dtd_direction_combo = QComboBox()
+        self.dtd_direction_combo.addItem("Direta", "forward")
+        self.dtd_direction_combo.addItem("Invertida", "reverse")
+        group_form.addRow("Direcao", self.dtd_direction_combo)
+
+        self.dtd_preserve_details_check = QCheckBox("Manter detalhes internos")
+        self.dtd_preserve_details_check.setChecked(True)
+        group_form.addRow("", self.dtd_preserve_details_check)
+
+        self.dtd_include_internal_check = QCheckBox("Incluir contornos internos")
+        self.dtd_include_internal_check.setChecked(False)
+        group_form.addRow("", self.dtd_include_internal_check)
+
+        self.dtd_preview_button = QPushButton("Gerar/atualizar previsualizacao")
+        self.dtd_preview_button.clicked.connect(self.generate_tikz)
+        group_form.addRow("", self.dtd_preview_button)
+
+        for widget in (
+            self.dtd_total_points_spin,
+            self.dtd_start_number_spin,
+            self.dtd_point_radius_spin,
+            self.dtd_label_offset_spin,
+        ):
+            widget.valueChanged.connect(self._settings_changed)
+        for combo in (self.dtd_submode_combo, self.dtd_direction_combo):
+            combo.currentIndexChanged.connect(self._settings_changed)
+        self.dtd_preserve_details_check.stateChanged.connect(self._settings_changed)
+        self.dtd_include_internal_check.stateChanged.connect(self._settings_changed)
+
+        form.addRow(self.dot_to_dot_group)
+
+    def _update_dot_to_dot_visibility(self, *args) -> None:
+        mode, _strategy = self._selected_mode_and_strategy()
+        self.dot_to_dot_group.setVisible(mode == "dot_to_dot")
 
     def _build_menus(self) -> None:
         menu = self.menuBar()
@@ -307,7 +382,20 @@ class MainWindow(QMainWindow):
             line_color=self.line_color_edit.text(),
             use_bezier=self.bezier_check.isChecked() or mode in {"visual"},
             width_units=self.width_units_spin.value(),
-            classic_strategy=strategy,
+            classic_strategy=strategy if mode == "classic" else "auto",
+        )
+
+    def dot_to_dot_config(self) -> DotToDotConfig:
+        """Build a dot-to-dot configuration from the Ponto a Ponto panel."""
+        return DotToDotConfig(
+            generation_mode=self.dtd_submode_combo.currentData() or "full_figure",
+            total_points=self.dtd_total_points_spin.value(),
+            start_number=self.dtd_start_number_spin.value(),
+            point_radius=self.dtd_point_radius_spin.value(),
+            label_offset=self.dtd_label_offset_spin.value(),
+            include_internal_contours=self.dtd_include_internal_check.isChecked(),
+            preserve_internal_details=self.dtd_preserve_details_check.isChecked(),
+            direction=self.dtd_direction_combo.currentData() or "forward",
         )
 
     def open_image(self) -> None:
@@ -334,10 +422,13 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            mode, _strategy = self._selected_mode_and_strategy()
+            dot_config = self.dot_to_dot_config() if mode == "dot_to_dot" else None
             self.build_result = build_tikz_from_image(
                 self.original_image,
                 self.processing_settings(),
                 self.tikz_options(),
+                dot_to_dot_config=dot_config,
             )
             self.result = self.build_result.processing_result
             self.code_editor.set_code(self.build_result.tikz_code)
