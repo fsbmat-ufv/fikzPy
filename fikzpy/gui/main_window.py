@@ -140,10 +140,10 @@ class MainWindow(QMainWindow):
 
         self.vectorization_mode_combo = QComboBox()
         self.vectorization_mode_combo.addItem("Classic Auto", ("classic", "auto"))
-        self.vectorization_mode_combo.addItem("Classic Line Art", ("classic", "line_art"))
         self.vectorization_mode_combo.addItem("Classic Filled", ("classic", "filled"))
         self.vectorization_mode_combo.addItem("Visual", ("visual", "auto"))
         self.vectorization_mode_combo.addItem("Contornos", ("contours", "auto"))
+        self.vectorization_mode_combo.addItem("Ponto a Ponto", ("dot_to_dot", "full_figure"))
         form.addRow("Modo", self.vectorization_mode_combo)
 
         self.ink_threshold_spin = QSpinBox()

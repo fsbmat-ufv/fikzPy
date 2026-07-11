@@ -22,7 +22,8 @@ from fikzpy.core.vector_exporter import generate_tikz_from_vector_objects
 from fikzpy.core.vector_objects import VectorObject
 from fikzpy.core.vector_pipeline import fit_contours_to_vector_objects
 from fikzpy.core.vectorization_config import config_for_mode
-from fikzpy.core.visual_pipeline import VisualTikzStats, generate_visual_tikz_picture
+from fikzpy.core.visual_pipeline import VisualTikzStats, contours_to_svg, generate_visual_tikz_picture
+from fikzpy.core.dot_to_dot import DotToDotConfig, DotToDotResult, run_dot_to_dot
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,15 @@ class TikzBuildResult:
     vector_stats: VectorObjectStats = VectorObjectStats()
     visual_stats: VisualTikzStats = VisualTikzStats()
     classic_semantic_result: ClassicSemanticResult | None = None
+    dot_to_dot_result: DotToDotResult | None = None
 
 
 def build_tikz_from_image(
     image: np.ndarray,
     settings: ProcessingSettings,
     options: TikzOptions,
+    *,
+    dot_to_dot_config: DotToDotConfig | None = None,
 ) -> TikzBuildResult:
     """Build TikZ code from an image using the selected public mode."""
     requested_mode = settings.vectorization_mode
@@ -94,6 +98,40 @@ def build_tikz_from_image(
             tikz_code=visual_result.tikz_picture,
             vector_stats=stats,
             visual_stats=visual_result.stats,
+        )
+
+    if effective_mode == "dot_to_dot":
+        log_event("Vectorization", "pipeline=dot_to_dot")
+        # Reuse the Visual intermediate SVG on an independent copy; the numbers
+        # are generated as native TikZ inside the dot-to-dot pipeline itself.
+        svg_source = contours_to_svg(
+            contours,
+            processing_result.original_bgr.shape,
+            options=options,
+            settings=visual_settings_from_processing(settings),
+        )
+        dot_result = run_dot_to_dot(
+            svg_source,
+            processing_result.original_bgr.shape,
+            dot_to_dot_config or DotToDotConfig(),
+            tikz_scale=options.tikz_scale,
+            line_color=options.line_color,
+            line_width=options.line_width,
+            width_units=options.width_units,
+            precision=options.precision,
+        )
+        log_event("DotToDot", f"points={dot_result.point_count}")
+        log_event("DotToDot", f"sequences={len(dot_result.sequences)}")
+        log_event("DotToDot", f"remaining_subpaths={len(dot_result.remaining_subpaths)}")
+        stats = VectorObjectStats()
+        _log_vector_stats(stats)
+        return TikzBuildResult(
+            requested_mode=requested_mode,
+            effective_mode=effective_mode,
+            processing_result=processing_result,
+            tikz_code=dot_result.tikz_code,
+            vector_stats=stats,
+            dot_to_dot_result=dot_result,
         )
 
     if effective_mode in {"vector", "fidelity"}:

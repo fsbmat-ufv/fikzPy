@@ -123,4 +123,6 @@ def config_for_mode(mode: str) -> VectorizationConfig:
         return VectorizationConfig.smooth()
     if normalized == "contours":
         return VectorizationConfig(mode="contours")
+    if normalized in {"dot_to_dot", "dot-to-dot", "ponto_a_ponto", "ponto-a-ponto", "ponto a ponto"}:
+        return VectorizationConfig(mode="dot_to_dot")
     raise ValueError(f"Unsupported vectorization mode: {mode}")

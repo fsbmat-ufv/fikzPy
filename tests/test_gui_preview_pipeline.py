@@ -54,7 +54,7 @@ def test_preview_temp_names_are_mode_specific() -> None:
     assert classic_path != visual_path
 
 
-def test_gui_exposes_classic_strategies_and_primary_modes() -> None:
+def test_gui_exposes_exactly_the_five_primary_modes() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
@@ -62,7 +62,7 @@ def test_gui_exposes_classic_strategies_and_primary_modes() -> None:
         window.vectorization_mode_combo.itemText(index)
         for index in range(window.vectorization_mode_combo.count())
     ]
-    assert labels == ["Classic Auto", "Classic Line Art", "Classic Filled", "Visual", "Contornos"]
+    assert labels == ["Classic Auto", "Classic Filled", "Visual", "Contornos", "Ponto a Ponto"]
 
     modes_and_strategies = [
         window.vectorization_mode_combo.itemData(index)
@@ -70,23 +70,27 @@ def test_gui_exposes_classic_strategies_and_primary_modes() -> None:
     ]
     assert modes_and_strategies == [
         ("classic", "auto"),
-        ("classic", "line_art"),
         ("classic", "filled"),
         ("visual", "auto"),
         ("contours", "auto"),
+        ("dot_to_dot", "full_figure"),
     ]
 
 
-def test_classic_line_art_selection_maps_to_classic_mode_and_line_art_strategy() -> None:
+def test_classic_line_art_is_not_selectable() -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
-    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Classic Line Art"))
+    assert window.vectorization_mode_combo.findText("Classic Line Art") == -1
+
+
+def test_ponto_a_ponto_selection_maps_to_dot_to_dot_mode() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
 
     settings = window.processing_settings()
-    options = window.tikz_options()
 
-    assert settings.vectorization_mode == "classic"
-    assert options.classic_strategy == "line_art"
+    assert settings.vectorization_mode == "dot_to_dot"
 
 
 def test_classic_filled_selection_maps_to_classic_mode_and_filled_strategy() -> None:
