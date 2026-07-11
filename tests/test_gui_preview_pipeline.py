@@ -173,3 +173,38 @@ def test_dot_to_dot_config_reflects_panel_values() -> None:
     assert config.include_internal_contours is True
     assert config.preserve_internal_details is False
     assert config.direction.value == "reverse"
+
+
+def test_selected_segments_panel_visible_only_for_that_submode() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
+
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Figura inteira"))
+    assert window.dtd_selection_group.isHidden()
+
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Selecionar trechos"))
+    assert not window.dtd_selection_group.isHidden()
+
+
+def test_selected_segments_config_includes_confirmed_segments() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Selecionar trechos"))
+
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<path d="M 0 0 L 40 0 L 40 40 L 0 40 Z"/></svg>'
+    )
+    window.dot_to_dot_canvas.set_svg(svg, (100, 100))
+    controller = window.dot_to_dot_canvas.controller
+    controller.set_point_count(4)
+    controller.click(20.0, 0.0)
+    controller.click(40.0, 20.0)
+    controller.confirm()
+
+    config = window.dot_to_dot_config()
+    assert config.generation_mode.value == "selected_segments"
+    assert len(config.selected_segments) == 1
+    assert config.selected_segments[0].point_count == 4

@@ -384,12 +384,43 @@ class SubPath:
         ys = [sample.point.y for sample in self._samples]
         return min(xs), min(ys), max(xs), max(ys)
 
+    def polyline(self) -> list[Vec2]:
+        """Return the flattened polyline points (for rendering/hit-testing)."""
+        return [sample.point for sample in self._samples]
+
     def centroid(self) -> Vec2:
         """Return the average of the flattened samples."""
         count = len(self._samples)
         sum_x = sum(sample.point.x for sample in self._samples)
         sum_y = sum(sample.point.y for sample in self._samples)
         return Vec2(sum_x / count, sum_y / count)
+
+    def closest_length(self, point: Vec2) -> tuple[float, Vec2, float]:
+        """Return ``(arc_length, closest_point, distance)`` nearest to ``point``.
+
+        Used to snap an interactive click onto this subpath.
+        """
+        best_length = 0.0
+        best_point = self._samples[0].point
+        best_distance = float("inf")
+        samples = self._samples
+        for index in range(len(samples) - 1):
+            low = samples[index]
+            high = samples[index + 1]
+            edge = high.point - low.point
+            edge_len2 = edge.dot(edge)
+            if edge_len2 <= _EPS:
+                t = 0.0
+                projected = low.point
+            else:
+                t = min(max((point - low.point).dot(edge) / edge_len2, 0.0), 1.0)
+                projected = low.point + edge.scaled(t)
+            distance = point.distance_to(projected)
+            if distance < best_distance:
+                best_distance = distance
+                best_point = projected
+                best_length = low.length + t * (high.length - low.length)
+        return best_length, best_point, best_distance
 
 
 def _is_degenerate(segment: Segment) -> bool:

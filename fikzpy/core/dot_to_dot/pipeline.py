@@ -12,14 +12,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from string import ascii_uppercase
 
-from fikzpy.core.dot_to_dot.config import DotToDotConfig, DotToDotGenerationMode, NumberingDirection
+from fikzpy.core.dot_to_dot.config import (
+    DotToDotConfig,
+    DotToDotGenerationMode,
+    NumberingDirection,
+    SelectedSegment,
+)
 from fikzpy.core.dot_to_dot.label_placement import build_dot_points
-from fikzpy.core.dot_to_dot.models import DotSequence, SubPath, SvgPath
+from fikzpy.core.dot_to_dot.models import DotPoint, DotSequence, SubPath, SvgPath
 from fikzpy.core.dot_to_dot.path_sampler import (
     ContourRef,
     distribute_points,
     relevant_contours,
     sample_subpath,
+)
+from fikzpy.core.dot_to_dot.segment_selection import (
+    remaining_runs_after_removal,
+    resolve_arc,
+    sample_selected_segment,
 )
 from fikzpy.core.dot_to_dot.svg_loader import SvgLoaderConfig, load_svg_paths
 from fikzpy.core.dot_to_dot.tikz_exporter import CoordinateTransform, build_tikz_picture
@@ -78,8 +88,14 @@ def run_dot_to_dot(
             precision=precision,
         )
     if config.generation_mode is DotToDotGenerationMode.SELECTED_SEGMENTS:
-        raise DotToDotError(
-            "Selected-segments generation is not available yet; use the full-figure submode."
+        return _run_selected_segments(
+            paths,
+            config,
+            transform,
+            tikz_scale=tikz_scale,
+            line_color=line_color,
+            line_width=line_width,
+            precision=precision,
         )
     raise DotToDotError(f"Unsupported generation mode: {config.generation_mode!r}")
 
@@ -138,6 +154,101 @@ def _run_full_figure(
         total_points=config.total_points,
         warnings=tuple(warnings),
     )
+
+
+def _run_selected_segments(
+    paths: list[SvgPath],
+    config: DotToDotConfig,
+    transform: CoordinateTransform,
+    *,
+    tikz_scale: float,
+    line_color: str,
+    line_width: float,
+    precision: int,
+) -> DotToDotResult:
+    if not config.selected_segments:
+        raise DotToDotError("Selected-segments generation requires at least one segment.")
+
+    lookup: dict[tuple[int, int], SubPath] = {}
+    for path in paths:
+        for subpath_id, subpath in enumerate(path.subpaths):
+            lookup[(path.path_id, subpath_id)] = subpath
+
+    removed_by_subpath: dict[tuple[int, int], list[tuple[float, float, bool]]] = {}
+    dot_points: list[DotPoint] = []
+    reverse = config.direction is NumberingDirection.REVERSE
+    next_number = config.start_number
+
+    ordered_segments = list(config.selected_segments)
+    if reverse:
+        ordered_segments = list(reversed(ordered_segments))
+
+    for segment in ordered_segments:
+        key = (segment.path_id, segment.subpath_id)
+        subpath = lookup.get(key)
+        if subpath is None:
+            raise DotToDotError(
+                f"Selected segment references unknown subpath {key}; re-select the segment."
+            )
+        samples = sample_selected_segment(subpath, segment)
+        labels = [str(next_number + index) for index in range(len(samples))]
+        next_number += len(samples)
+        centroid = subpath.centroid() if subpath.closed else None
+        dot_points.extend(build_dot_points(samples, labels, centroid=centroid, flip_y=True))
+
+        arc = resolve_arc(subpath, segment)
+        removed_by_subpath.setdefault(key, []).append((arc.removed_start, arc.removed_end, arc.wrap))
+
+    first_key = (ordered_segments[0].path_id, ordered_segments[0].subpath_id)
+    sequences = (
+        DotSequence(
+            prefix="",
+            points=tuple(dot_points),
+            path_id=first_key[0],
+            subpath_id=first_key[1],
+        ),
+    )
+
+    remaining = _remaining_after_selection(paths, removed_by_subpath)
+    dotted_refs = tuple(
+        ContourRef(path_id, subpath_id, lookup[(path_id, subpath_id)])
+        for (path_id, subpath_id) in removed_by_subpath
+    )
+
+    tikz_code = build_tikz_picture(
+        config,
+        remaining,
+        sequences,
+        transform,
+        tikz_scale=tikz_scale,
+        line_color=line_color,
+        line_width=line_width,
+        precision=precision,
+    )
+    return DotToDotResult(
+        tikz_code=tikz_code,
+        sequences=sequences,
+        dotted_refs=dotted_refs,
+        remaining_subpaths=tuple(remaining),
+        paths=tuple(paths),
+        total_points=sum(len(sequence.points) for sequence in sequences),
+    )
+
+
+def _remaining_after_selection(
+    paths: list[SvgPath],
+    removed_by_subpath: dict[tuple[int, int], list[tuple[float, float, bool]]],
+) -> list[SubPath]:
+    remaining: list[SubPath] = []
+    for path in paths:
+        for subpath_id, subpath in enumerate(path.subpaths):
+            key = (path.path_id, subpath_id)
+            if key not in removed_by_subpath:
+                remaining.append(subpath)
+                continue
+            for run in remaining_runs_after_removal(subpath, removed_by_subpath[key]):
+                remaining.append(SubPath(run, closed=False))
+    return remaining
 
 
 def _limit_contours(contours: list[ContourRef], config: DotToDotConfig) -> list[ContourRef]:
