@@ -17,16 +17,17 @@ modes: if the dot-to-dot pipeline cannot produce a result it raises
 
 ## Submodes: Figura inteira vs Selecionar trechos
 
-- **Figura inteira (`full_figure`)** — automatic. The main external contour of
-  the figure is identified, removed, and replaced by the exact number of points
-  requested. Internal details (eyes, mouth, spots, …) can be kept drawn.
-  Optionally, points can also be distributed across the relevant internal
-  contours (see below).
+- **Figura inteira (`full_figure`)** — automatic. The figure is consolidated
+  into a **single external silhouette**, which is removed and replaced by the
+  exact number of points requested, numbered `1..N` in one sequence. By default
+  nothing else is drawn; the optional **Manter detalhes internos** checkbox
+  (off by default) keeps interior details (eyes, mouth, spots, …) as unnumbered
+  lines without ever restoring the replaced outline.
 - **Selecionar trechos (`selected_segments`)** — interactive. The user clicks a
-  start and an end point on the canvas; the clicks snap to the nearest path and
-  the arc between them is highlighted. Each confirmed arc is removed and
-  replaced by its own set of points, and numbering continues automatically from
-  one arc to the next.
+  start and an end point directly **on the main preview image**; the clicks
+  snap to the nearest traced path and the arc between them is highlighted.
+  Each confirmed arc is removed and replaced by its own set of points, and
+  numbering continues automatically from one arc to the next.
 
 ## Flow: SVG → geometry → TikZ
 
@@ -42,12 +43,17 @@ modes: if the dot-to-dot pipeline cannot produce a result it raises
    of the curve, not along the raw Bezier parameter. For a closed path with `N`
    points the positions are `s_i = i·L/N` for `i = 0 … N-1`, so a point is never
    placed at both `s = 0` and `s = L`.
-4. [`path_sampler`](../fikzpy/core/dot_to_dot/path_sampler.py) samples the
-   points, identifies the main contour and distributes points across internal
-   contours; [`segment_selection`](../fikzpy/core/dot_to_dot/segment_selection.py)
+4. [`silhouette`](../fikzpy/core/dot_to_dot/silhouette.py) rasterizes the copy
+   into a monochrome mask, merges the visible elements with a size-proportional
+   morphological closing, keeps the main connected region and extracts its
+   single external contour (OpenCV `RETR_EXTERNAL` + moderate `approxPolyDP`);
+   [`segment_selection`](../fikzpy/core/dot_to_dot/segment_selection.py)
    handles snapping and arc removal for the interactive submode.
-5. [`label_placement`](../fikzpy/core/dot_to_dot/label_placement.py) offsets each
-   number along the outward normal of the curve.
+5. [`label_placement`](../fikzpy/core/dot_to_dot/label_placement.py) computes
+   the outward normal of each point and
+   [`label_layout`](../fikzpy/core/dot_to_dot/label_layout.py) places the
+   numbers with greedy collision avoidance (against other labels, other dots
+   and the silhouette interior), keeping them predominantly outside the figure.
 6. [`tikz_exporter`](../fikzpy/core/dot_to_dot/tikz_exporter.py) emits the TikZ:
    the remaining drawing is converted with the same coordinate transform used
    elsewhere in the project (`image_point_to_tikz`: pixels → TikZ units, y-axis
@@ -70,7 +76,7 @@ Reusable styles are emitted once per picture:
 ```latex
 \tikzset{
   dotToDotPoint/.style={fill=black,draw=black},
-  dotToDotLabel/.style={font=\sffamily\small,inner sep=1pt},
+  dotToDotLabel/.style={font=\sffamily\scriptsize,inner sep=1pt},
 }
 ```
 
@@ -81,34 +87,23 @@ Each point and its number are then:
 \node[dotToDotLabel,anchor=south] at (xl,yl) {1};
 ```
 
-## Identifying the main contour
+## Identifying the silhouette
 
-The main contour is chosen conservatively: it is the closed subpath with the
-largest area (falling back to the largest arc length), **after** excluding:
+The silhouette is a *consolidated* view of the figure, not the largest
+isolated subpath: every visible subpath (excluding a full-canvas
+background/frame rectangle) is union-filled into a raster mask, a
+morphological closing proportional to the image size joins strokes that were
+drawn separately, the largest connected region is kept, and only its external
+contour is used. White cut-outs, sibling ribbon boundaries and small noise
+therefore never become "the outline".
 
-- a full-canvas background/frame rectangle (a near-rectangular shape whose
-  bounding box covers ≳98% of the canvas);
-- tiny noise (area below a small fraction of the canvas and negligible length).
+Points run **clockwise** by default (invertible), starting at the topmost
+point of the silhouette (ties broken to the left) or at the position nearest
+an optional `start_point_hint`. Labels are always the pure numeric sequence
+`start_number..start_number+N-1` — letter-prefixed sequences no longer exist.
 
-This avoids automatically selecting the page/canvas, an outer frame, small
-noise or white cut-out masks as the main outline.
-
-## Handling disconnected contours
-
-When **Incluir contornos internos** is enabled, the requested total number of
-points is distributed across the relevant contours proportionally to their
-length, with a minimum number of points per contour, and largest-remainder
-rounding so the counts always sum **exactly** to the requested total.
-
-Because disconnected contours must not be joined, each contour becomes its own
-independent numbered sequence with a distinct prefix:
-
-- main contour: `1, 2, 3, …`
-- second contour: `A1, A2, A3, …`
-- third contour: `B1, B2, B3, …`
-
-In the interactive submode the numbering instead continues across the selected
-arcs as a single sequence (e.g. arc 1 gets points 1–10, arc 2 gets 11–20).
+In the interactive submode the numbering continues across the selected arcs
+as a single sequence (e.g. arc 1 gets points 1–10, arc 2 gets 11–20).
 
 ## Removing selected arcs
 
@@ -123,9 +118,11 @@ trecho** switches to the other.
 
 - Internal details kept by `preserve_internal_details` are rendered as stroked
   outlines, not re-filled, so a solid feature becomes an outline.
-- The main-contour heuristic is deliberately conservative; on unusual figures
-  the intended outline may need to be selected manually with *Selecionar
-  trechos*.
+- The silhouette is the outer boundary of the merged figure: fully disconnected
+  secondary figures (e.g. a separate cloud) are dropped in *Figura inteira*;
+  use *Selecionar trechos* to dot them.
+- The morphological closing may bridge very close but genuinely separate
+  strokes; its radius is proportional to the image size, not user-tunable.
 - Selected segments are stored as `(path_id, subpath_id, length ratios)`. If the
   tracing parameters are changed between selecting and generating, the trace can
   change and a selection may no longer resolve; the pipeline then raises a clear
@@ -139,11 +136,12 @@ From the GUI:
 
 1. Open an image and select **Ponto a Ponto**.
 2. For **Figura inteira**: set the number of points, starting number, point
-   size, number distance, direction and the internal-contour options, then click
-   *Gerar/atualizar previsualizacao*.
-3. For **Selecionar trechos**: pick *Selecionar trechos*, click a start and an
-   end point on the canvas, optionally *Inverter trecho*, set the number of
-   points, *Confirmar trecho*, repeat for further arcs, then *Gerar TikZ*.
+   size, number distance, direction and (optionally) *Manter detalhes
+   internos*, then click *Gerar/atualizar previsualizacao*.
+3. For **Selecionar trechos**: pick *Selecionar trechos* — the **main preview
+   image** becomes interactive. Click a start and an end point on the figure,
+   optionally *Inverter*, set the number of points, *Confirmar*, repeat for
+   further arcs, then *Gerar TikZ*.
 
 Programmatically:
 
