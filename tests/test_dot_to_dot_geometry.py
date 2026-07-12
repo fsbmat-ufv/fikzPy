@@ -13,12 +13,8 @@ from fikzpy.core.dot_to_dot.models import (
     SubPath,
     Vec2,
 )
-from fikzpy.core.dot_to_dot.path_sampler import (
-    distribute_points,
-    relevant_contours,
-    sample_positions,
-    sample_subpath,
-)
+from fikzpy.core.dot_to_dot.path_sampler import sample_positions, sample_subpath
+from fikzpy.core.dot_to_dot.silhouette import extract_silhouette
 from fikzpy.core.dot_to_dot.svg_loader import load_svg_paths
 from fikzpy.core.dot_to_dot.tikz_exporter import CoordinateTransform
 
@@ -169,22 +165,6 @@ def test_sample_uniform_spacing_on_cubic() -> None:
         assert spacing == pytest.approx(expected, abs=expected * 0.2)
 
 
-# --- Distribution -------------------------------------------------------------------
-
-
-def test_distribute_points_sums_to_total() -> None:
-    counts = distribute_points([100.0, 50.0, 10.0], 20, minimum=3)
-    assert sum(counts) == 20
-    assert all(count >= 3 for count in counts)
-    # Longest path receives the most points.
-    assert counts[0] == max(counts)
-
-
-def test_distribute_points_rejects_impossible_minimum() -> None:
-    with pytest.raises(ValueError):
-        distribute_points([1.0, 1.0, 1.0], 5, minimum=3)
-
-
 # --- Coordinate conversion ----------------------------------------------------------
 
 
@@ -196,16 +176,59 @@ def test_coordinate_transform_flips_y_and_scales() -> None:
     assert transform.to_tikz(Vec2(50.0, 40.0)) == pytest.approx((5.0, 4.0))
 
 
-def test_relevant_contours_excludes_full_canvas_frame() -> None:
+# --- Silhouette extraction ----------------------------------------------------------
+
+
+def test_silhouette_excludes_full_canvas_frame() -> None:
     # Big frame rectangle covering the whole canvas plus a smaller shape.
     svg = _svg(
         "M 0 0 L 100 0 L 100 100 L 0 100 Z",
         extra='<path d="M 30 30 L 60 30 L 60 60 L 30 60 Z"/>',
     )
-    paths = load_svg_paths(svg)
-    contours = relevant_contours(paths, 100.0, 100.0)
-    # The full-canvas frame must not be selected as a relevant contour.
-    assert contours
-    main = contours[0]
-    min_x, min_y, max_x, max_y = main.subpath.bounding_box()
-    assert (max_x - min_x) < 90.0 and (max_y - min_y) < 90.0
+    result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0)
+    min_x, min_y, max_x, max_y = result.outline.bounding_box()
+    # The silhouette follows the inner square, not the page frame.
+    assert (max_x - min_x) < 60.0 and (max_y - min_y) < 60.0
+
+
+def test_silhouette_merges_overlapping_subpaths_into_one_outline() -> None:
+    # Two overlapping squares must yield one merged external outline.
+    svg = _svg(
+        "M 10 10 L 50 10 L 50 50 L 10 50 Z",
+        extra='<path d="M 40 40 L 80 40 L 80 80 L 40 80 Z"/>',
+    )
+    result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0)
+    min_x, min_y, max_x, max_y = result.outline.bounding_box()
+    assert max_x - min_x == pytest.approx(70.0, abs=4.0)
+    assert max_y - min_y == pytest.approx(70.0, abs=4.0)
+    assert result.outline.closed is True
+
+
+def test_silhouette_ignores_white_cutouts() -> None:
+    # A ring: outer square plus inner cutout; only the external contour counts.
+    svg = _svg("M 10 10 L 90 10 L 90 90 L 10 90 Z M 30 30 L 70 30 L 70 70 L 30 70 Z")
+    result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0)
+    min_x, min_y, max_x, max_y = result.outline.bounding_box()
+    assert max_x - min_x == pytest.approx(80.0, abs=4.0)
+    # Interior details are classified separately, never merged into the outline.
+    assert result.outline.area() == pytest.approx(6400.0, rel=0.1)
+
+
+def test_silhouette_is_clockwise_by_default() -> None:
+    svg = _svg("M 20 20 L 80 20 L 80 80 L 20 80 Z")
+    result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0)
+    # Positive shoelace area in image coordinates = visually clockwise.
+    assert result.outline.signed_area() > 0.0
+
+
+def test_silhouette_internal_details_exclude_boundary_ribbons() -> None:
+    # Outer ring (thin boundary ribbon, ~1% stroke) plus an inner detail square.
+    svg = _svg(
+        "M 10 10 L 90 10 L 90 90 L 10 90 Z M 11 11 L 89 11 L 89 89 L 11 89 Z",
+        extra='<path d="M 45 45 L 55 45 L 55 55 L 45 55 Z"/>',
+    )
+    result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0, collect_internal_details=True)
+    boxes = [detail.bounding_box() for detail in result.internal_details]
+    # The inner detail square is kept; the outline ribbons are excluded.
+    assert any((box[2] - box[0]) < 20.0 for box in boxes)
+    assert all((box[2] - box[0]) < 60.0 for box in boxes)

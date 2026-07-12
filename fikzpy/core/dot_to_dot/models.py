@@ -440,9 +440,10 @@ class SvgPath:
 class DotPoint:
     """A single numbered dot sampled along a path.
 
-    ``normal`` is the unit outward normal in SVG/geometry space; the exporter
-    offsets the label along it (in TikZ units) so ``label_offset`` stays a
-    predictable, resolution-independent control.
+    ``normal`` is the unit outward normal in SVG/geometry space. When the
+    collision-aware layout has run, ``label_xy`` holds the final label
+    position in TikZ coordinates; otherwise the exporter falls back to a
+    plain normal-direction offset.
     """
 
     position: Vec2
@@ -450,6 +451,7 @@ class DotPoint:
     label: str
     normal: Vec2
     label_anchor: str
+    label_xy: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)

@@ -272,17 +272,13 @@ class MainWindow(QMainWindow):
         group_form.addRow("Distancia dos numeros", self.dtd_label_offset_spin)
 
         self.dtd_direction_combo = QComboBox()
-        self.dtd_direction_combo.addItem("Direta", "forward")
-        self.dtd_direction_combo.addItem("Invertida", "reverse")
+        self.dtd_direction_combo.addItem("Horario", "forward")
+        self.dtd_direction_combo.addItem("Anti-horario", "reverse")
         group_form.addRow("Direcao", self.dtd_direction_combo)
 
         self.dtd_preserve_details_check = QCheckBox("Manter detalhes internos")
-        self.dtd_preserve_details_check.setChecked(True)
+        self.dtd_preserve_details_check.setChecked(False)
         group_form.addRow("", self.dtd_preserve_details_check)
-
-        self.dtd_include_internal_check = QCheckBox("Incluir contornos internos")
-        self.dtd_include_internal_check.setChecked(False)
-        group_form.addRow("", self.dtd_include_internal_check)
 
         self.dtd_preview_button = QPushButton("Gerar/atualizar previsualizacao")
         self.dtd_preview_button.clicked.connect(self.generate_tikz)
@@ -301,7 +297,6 @@ class MainWindow(QMainWindow):
             combo.currentIndexChanged.connect(self._settings_changed)
         self.dtd_submode_combo.currentIndexChanged.connect(self._update_dot_to_dot_visibility)
         self.dtd_preserve_details_check.stateChanged.connect(self._settings_changed)
-        self.dtd_include_internal_check.stateChanged.connect(self._settings_changed)
 
         form.addRow(self.dot_to_dot_group)
 
@@ -503,7 +498,6 @@ class MainWindow(QMainWindow):
             start_number=self.dtd_start_number_spin.value(),
             point_radius=self.dtd_point_radius_spin.value(),
             label_offset=self.dtd_label_offset_spin.value(),
-            include_internal_contours=self.dtd_include_internal_check.isChecked(),
             preserve_internal_details=self.dtd_preserve_details_check.isChecked(),
             direction=self.dtd_direction_combo.currentData() or "forward",
             selected_segments=segments,

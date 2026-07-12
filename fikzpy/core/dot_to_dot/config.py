@@ -92,18 +92,23 @@ class SelectedSegment:
 
 @dataclass(frozen=True)
 class DotToDotConfig:
-    """User-facing configuration for the dot-to-dot mode."""
+    """User-facing configuration for the dot-to-dot mode.
+
+    ``start_point_hint`` optionally holds an SVG-space ``(x, y)`` picked by
+    clicking the figure: point 1 is placed at the silhouette position nearest
+    to it. When ``None``, the start point is chosen automatically (topmost
+    point of the silhouette, ties broken to the left).
+    """
 
     generation_mode: DotToDotGenerationMode | str = DotToDotGenerationMode.FULL_FIGURE
     total_points: int = 20
     start_number: int = 1
     point_radius: float = 2.0
     label_offset: float = 0.35
-    include_internal_contours: bool = False
-    preserve_internal_details: bool = True
+    preserve_internal_details: bool = False
     direction: NumberingDirection | str = NumberingDirection.FORWARD
     selected_segments: tuple[SelectedSegment, ...] = field(default_factory=tuple)
-    min_points_per_path: int = 3
+    start_point_hint: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "generation_mode", coerce_generation_mode(self.generation_mode))
@@ -120,12 +125,11 @@ class DotToDotConfig:
         if not isfinite(offset) or offset < 0.0:
             raise ValueError("label_offset must be finite and non-negative.")
         object.__setattr__(self, "label_offset", offset)
-        if int(self.min_points_per_path) < 1:
-            raise ValueError("min_points_per_path must be positive.")
-        object.__setattr__(self, "min_points_per_path", int(self.min_points_per_path))
-        object.__setattr__(self, "include_internal_contours", bool(self.include_internal_contours))
         object.__setattr__(self, "preserve_internal_details", bool(self.preserve_internal_details))
         object.__setattr__(self, "selected_segments", tuple(self.selected_segments))
+        if self.start_point_hint is not None:
+            hint = (float(self.start_point_hint[0]), float(self.start_point_hint[1]))
+            object.__setattr__(self, "start_point_hint", hint)
 
 
 __all__ = [

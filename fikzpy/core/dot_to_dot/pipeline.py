@@ -9,8 +9,7 @@ back to another mode.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from string import ascii_uppercase
+from dataclasses import dataclass, field, replace
 
 from fikzpy.core.dot_to_dot.config import (
     DotToDotConfig,
@@ -18,21 +17,21 @@ from fikzpy.core.dot_to_dot.config import (
     NumberingDirection,
     SelectedSegment,
 )
+from fikzpy.core.dot_to_dot.label_layout import layout_labels
 from fikzpy.core.dot_to_dot.label_placement import build_dot_points
-from fikzpy.core.dot_to_dot.models import DotPoint, DotSequence, SubPath, SvgPath
-from fikzpy.core.dot_to_dot.path_sampler import (
-    ContourRef,
-    distribute_points,
-    relevant_contours,
-    sample_subpath,
-)
+from fikzpy.core.dot_to_dot.models import DotPoint, DotSequence, SubPath, SvgPath, Vec2
+from fikzpy.core.dot_to_dot.path_sampler import ContourRef, SampledPoint
 from fikzpy.core.dot_to_dot.segment_selection import (
     remaining_runs_after_removal,
     resolve_arc,
     sample_selected_segment,
 )
+from fikzpy.core.dot_to_dot.silhouette import SilhouetteError, extract_silhouette
 from fikzpy.core.dot_to_dot.svg_loader import SvgLoaderConfig, load_svg_paths
 from fikzpy.core.dot_to_dot.tikz_exporter import CoordinateTransform, build_tikz_picture
+
+_LABEL_HEIGHT_CM = 0.20
+_DENSITY_WARNING_FACTOR = 1.6
 
 
 class DotToDotError(RuntimeError):
@@ -50,6 +49,7 @@ class DotToDotResult:
     paths: tuple[SvgPath, ...]
     total_points: int
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    silhouette: SubPath | None = None
 
     @property
     def point_count(self) -> int:
@@ -113,32 +113,61 @@ def _run_full_figure(
     precision: int,
 ) -> DotToDotResult:
     warnings: list[str] = []
-    contours = relevant_contours(paths, canvas_width, canvas_height)
-    if not contours:
-        contours = relevant_contours(paths, canvas_width, canvas_height, require_closed=False)
-    if not contours:
-        raise DotToDotError("No suitable contour was found to convert into points.")
+    try:
+        silhouette_result = extract_silhouette(
+            paths,
+            canvas_width,
+            canvas_height,
+            collect_internal_details=config.preserve_internal_details,
+        )
+    except SilhouetteError as exc:
+        raise DotToDotError(str(exc)) from exc
+    outline = silhouette_result.outline
 
-    if config.include_internal_contours:
-        selected = _limit_contours(contours, config)
-    else:
-        selected = contours[:1]
+    total = outline.total_length
+    count = config.total_points
+    start_length = _start_length(outline, config.start_point_hint)
+    direction = -1.0 if config.direction is NumberingDirection.REVERSE else 1.0
+    step = total / count
+    positions = [(start_length + direction * index * step) % total for index in range(count)]
+    samples = [
+        SampledPoint(
+            position=outline.point_at_length(length, wrap=True),
+            tangent=outline.tangent_at_length(length, wrap=True),
+            length=length,
+        )
+        for length in positions
+    ]
+    labels = [str(config.start_number + index) for index in range(count)]
+    dots = build_dot_points(samples, labels, centroid=outline.centroid(), flip_y=True)
+    placements = layout_labels(
+        list(dots),
+        transform,
+        label_offset=config.label_offset,
+        point_radius_pt=config.point_radius,
+        tikz_scale=tikz_scale,
+        silhouette=outline,
+    )
+    dots = tuple(
+        replace(dot, label_xy=(placed.x, placed.y), label_anchor=placed.anchor)
+        for dot, placed in zip(dots, placements)
+    )
+    sequence = DotSequence(prefix="", points=dots, path_id=-1, subpath_id=-1)
 
-    counts = _allocate_points(selected, config)
-    reverse = config.direction is NumberingDirection.REVERSE
-    sequences: list[DotSequence] = []
-    for index, (contour, count) in enumerate(zip(selected, counts)):
-        prefix = "" if index == 0 else _sequence_prefix(index)
-        sequence = _build_sequence(contour, count, prefix, config, reverse=reverse)
-        sequences.append(sequence)
+    spacing_units = (total * transform.scale) / count
+    min_spacing = _DENSITY_WARNING_FACTOR * _LABEL_HEIGHT_CM / max(tikz_scale, 1e-9)
+    if spacing_units < min_spacing:
+        warnings.append(
+            "A quantidade de pontos e alta para o tamanho da figura; "
+            "os numeros podem ficar proximos demais."
+        )
 
-    dotted_ids = {(ref.path_id, ref.subpath_id) for ref in selected}
-    remaining = _remaining_subpaths(paths, dotted_ids, config, warnings)
+    remaining = list(silhouette_result.internal_details) if config.preserve_internal_details else []
 
     tikz_code = build_tikz_picture(
         config,
         remaining,
-        sequences,
+        (sequence,),
         transform,
         tikz_scale=tikz_scale,
         line_color=line_color,
@@ -147,13 +176,29 @@ def _run_full_figure(
     )
     return DotToDotResult(
         tikz_code=tikz_code,
-        sequences=tuple(sequences),
-        dotted_refs=tuple(selected),
+        sequences=(sequence,),
+        dotted_refs=(),
         remaining_subpaths=tuple(remaining),
         paths=tuple(paths),
-        total_points=config.total_points,
+        total_points=count,
         warnings=tuple(warnings),
+        silhouette=outline,
     )
+
+
+def _start_length(outline: SubPath, hint: tuple[float, float] | None) -> float:
+    """Return the arc length where point 1 sits.
+
+    With a click hint, the nearest silhouette position wins; otherwise the
+    predictable automatic rule applies: topmost point, ties broken leftmost.
+    """
+    if hint is not None:
+        length, _point, _distance = outline.closest_length(Vec2(hint[0], hint[1]))
+        return length
+    vertices = outline.polyline()
+    top = min(vertices, key=lambda point: (point.y, point.x))
+    length, _point, _distance = outline.closest_length(top)
+    return length
 
 
 def _run_selected_segments(
@@ -248,71 +293,6 @@ def _remaining_after_selection(
                 continue
             for run in remaining_runs_after_removal(subpath, removed_by_subpath[key]):
                 remaining.append(SubPath(run, closed=False))
-    return remaining
-
-
-def _limit_contours(contours: list[ContourRef], config: DotToDotConfig) -> list[ContourRef]:
-    max_paths = max(1, config.total_points // config.min_points_per_path)
-    return contours[:max_paths]
-
-
-def _allocate_points(selected: list[ContourRef], config: DotToDotConfig) -> list[int]:
-    if len(selected) == 1:
-        return [config.total_points]
-    lengths = [ref.subpath.total_length for ref in selected]
-    return distribute_points(lengths, config.total_points, minimum=config.min_points_per_path)
-
-
-def _build_sequence(
-    contour: ContourRef,
-    count: int,
-    prefix: str,
-    config: DotToDotConfig,
-    *,
-    reverse: bool,
-) -> DotSequence:
-    samples = sample_subpath(contour.subpath, count, reverse=reverse)
-    labels = _labels_for(prefix, count, config.start_number)
-    centroid = contour.subpath.centroid() if contour.subpath.closed else None
-    dot_points = build_dot_points(samples, labels, centroid=centroid, flip_y=True)
-    return DotSequence(
-        prefix=prefix,
-        points=dot_points,
-        path_id=contour.path_id,
-        subpath_id=contour.subpath_id,
-    )
-
-
-def _labels_for(prefix: str, count: int, start_number: int) -> list[str]:
-    if prefix == "":
-        return [str(start_number + index) for index in range(count)]
-    return [f"{prefix}{index + 1}" for index in range(count)]
-
-
-def _sequence_prefix(index: int) -> str:
-    # index 1 -> "A", 2 -> "B", ..., 26 -> "Z", 27 -> "AA" (bijective base 26).
-    number = index
-    letters = ""
-    while number > 0:
-        number, remainder = divmod(number - 1, 26)
-        letters = ascii_uppercase[remainder] + letters
-    return letters
-
-
-def _remaining_subpaths(
-    paths: list[SvgPath],
-    dotted_ids: set[tuple[int, int]],
-    config: DotToDotConfig,
-    warnings: list[str],
-) -> list[SubPath]:
-    if not config.preserve_internal_details:
-        return []
-    remaining: list[SubPath] = []
-    for path in paths:
-        for subpath_id, subpath in enumerate(path.subpaths):
-            if (path.path_id, subpath_id) in dotted_ids:
-                continue
-            remaining.append(subpath)
     return remaining
 
 

@@ -96,7 +96,7 @@ def styles_block() -> str:
     return (
         "  \\tikzset{\n"
         "    dotToDotPoint/.style={fill=black,draw=black},\n"
-        "    dotToDotLabel/.style={font=\\sffamily\\small,inner sep=1pt},\n"
+        "    dotToDotLabel/.style={font=\\sffamily\\scriptsize,inner sep=1pt},\n"
         "  }"
     )
 
@@ -121,6 +121,10 @@ def render_remaining_drawing(
 
 
 def _label_coordinate(dot, transform: CoordinateTransform, label_offset: float, precision: int) -> str:
+    if dot.label_xy is not None:
+        # Position already resolved by the collision-aware label layout.
+        x, y = dot.label_xy
+        return f"({_fmt(x, precision)},{_fmt(y, precision)})"
     x, y = transform.to_tikz(dot.position)
     # Convert the SVG-space outward normal to TikZ orientation (y flips) and
     # offset the label by ``label_offset`` TikZ units.

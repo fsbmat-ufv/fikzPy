@@ -159,9 +159,8 @@ def test_dot_to_dot_config_reflects_panel_values() -> None:
     window.dtd_start_number_spin.setValue(5)
     window.dtd_point_radius_spin.setValue(3.0)
     window.dtd_label_offset_spin.setValue(0.5)
-    window.dtd_include_internal_check.setChecked(True)
-    window.dtd_preserve_details_check.setChecked(False)
-    window.dtd_direction_combo.setCurrentIndex(window.dtd_direction_combo.findText("Invertida"))
+    window.dtd_preserve_details_check.setChecked(True)
+    window.dtd_direction_combo.setCurrentIndex(window.dtd_direction_combo.findText("Anti-horario"))
 
     config = window.dot_to_dot_config()
 
@@ -170,9 +169,18 @@ def test_dot_to_dot_config_reflects_panel_values() -> None:
     assert config.start_number == 5
     assert config.point_radius == 3.0
     assert config.label_offset == 0.5
-    assert config.include_internal_contours is True
-    assert config.preserve_internal_details is False
+    assert config.preserve_internal_details is True
     assert config.direction.value == "reverse"
+
+
+def test_dot_to_dot_defaults_keep_details_off_and_no_internal_contours_option() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.dtd_preserve_details_check.isChecked() is False
+    assert not hasattr(window, "dtd_include_internal_check")
+    config = window.dot_to_dot_config()
+    assert config.preserve_internal_details is False
 
 
 def test_selected_segments_panel_visible_only_for_that_submode() -> None:

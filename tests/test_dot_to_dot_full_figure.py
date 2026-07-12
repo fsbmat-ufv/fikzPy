@@ -1,6 +1,8 @@
-"""Stage 2 tests: full-figure dot-to-dot generation and mode isolation."""
+"""Tests for full-figure dot-to-dot generation (single silhouette output)."""
 
 from __future__ import annotations
+
+import re
 
 import numpy as np
 import pytest
@@ -23,113 +25,139 @@ _MAIN_WITH_DETAIL = _svg(
     'M 80 80 L 120 80 L 120 120 L 80 120 Z"/>'
 )
 
-_TWO_CONTOURS = _svg(
+_TWO_BLOBS = _svg(
     '<path d="M 10 10 L 90 10 L 90 90 L 10 90 Z"/>'
     '<path d="M 120 120 L 160 120 L 160 160 L 120 160 Z"/>'
 )
 
 
-# --- Main contour and counts --------------------------------------------------------
+def _tikz_labels(code: str) -> list[str]:
+    return re.findall(r"\\node\[dotToDotLabel[^\]]*\] at \([^)]*\) \{([^}]*)\};", code)
 
 
-def test_main_contour_gets_exact_point_count() -> None:
-    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=12))
+# --- Exact counts and pure numeric labels -------------------------------------------
+
+
+@pytest.mark.parametrize("total", [10, 50])
+def test_exact_point_and_node_counts(total: int) -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=total))
+    code = result.tikz_code
+    assert code.count("\\fill[dotToDotPoint]") == total
+    assert code.count("\\node[dotToDotLabel") == total
+    assert result.point_count == total
+
+
+@pytest.mark.parametrize("total", [10, 50])
+def test_labels_are_exactly_one_to_n(total: int) -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=total))
+    labels = _tikz_labels(result.tikz_code)
+    assert labels == [str(number) for number in range(1, total + 1)]
+
+
+def test_no_alphanumeric_sequences() -> None:
+    result = run_dot_to_dot(_TWO_BLOBS, (200, 200), DotToDotConfig(total_points=30))
+    labels = _tikz_labels(result.tikz_code)
+    assert all(re.fullmatch(r"\d+", label) for label in labels)
+    assert not re.search(r"[A-Z]+\d+", result.tikz_code)
+
+
+def test_single_sequence_even_with_disconnected_blobs() -> None:
+    # Two disconnected squares: full figure still yields ONE numbered sequence
+    # over the main region only.
+    result = run_dot_to_dot(_TWO_BLOBS, (200, 200), DotToDotConfig(total_points=12))
     assert len(result.sequences) == 1
-    assert len(result.sequences[0].points) == 12
     assert result.point_count == 12
 
 
-def test_total_points_are_exactly_requested_with_internal_contours() -> None:
-    config = DotToDotConfig(total_points=30, include_internal_contours=True, min_points_per_path=3)
-    result = run_dot_to_dot(_TWO_CONTOURS, (200, 200), config)
-    assert result.point_count == 30
-    assert sum(len(sequence.points) for sequence in result.sequences) == 30
+# --- Original drawing removed by default --------------------------------------------
 
 
-def test_internal_contours_distribute_proportionally_to_length() -> None:
-    config = DotToDotConfig(total_points=30, include_internal_contours=True, min_points_per_path=3)
-    result = run_dot_to_dot(_TWO_CONTOURS, (200, 200), config)
-    assert len(result.sequences) == 2
-    # The longer (larger) contour must receive more points than the shorter one.
-    counts = [len(sequence.points) for sequence in result.sequences]
-    assert counts[0] > counts[1]
-    assert all(count >= 3 for count in counts)
-
-
-# --- Internal detail preservation ---------------------------------------------------
-
-
-def test_internal_details_are_preserved_by_default() -> None:
-    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8))
-    # The inner square detail is kept in the remaining drawing.
-    assert len(result.remaining_subpaths) == 1
-
-
-def test_internal_details_can_be_dropped() -> None:
-    config = DotToDotConfig(total_points=8, preserve_internal_details=False)
-    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), config)
+def test_no_original_paths_by_default() -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=10))
     assert result.remaining_subpaths == ()
+    assert "\\draw" not in result.tikz_code
 
 
-# --- Removed original outline -------------------------------------------------------
+def test_internal_details_only_when_requested() -> None:
+    config = DotToDotConfig(total_points=10, preserve_internal_details=True)
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), config)
+    # The inner square detail is kept as unnumbered lines...
+    assert len(result.remaining_subpaths) >= 1
+    assert result.tikz_code.count("\\draw[draw=") == len(result.remaining_subpaths)
+    # ...and the point count is unchanged.
+    assert result.point_count == 10
+    labels = _tikz_labels(result.tikz_code)
+    assert labels == [str(number) for number in range(1, 11)]
 
 
-def test_original_main_outline_is_replaced_not_drawn() -> None:
+def test_details_never_restore_the_replaced_outline() -> None:
+    config = DotToDotConfig(total_points=10, preserve_internal_details=True)
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), config)
+    outline_min_x, _, outline_max_x, _ = result.silhouette.bounding_box()
+    for detail in result.remaining_subpaths:
+        min_x, _, max_x, _ = detail.bounding_box()
+        # Every kept detail is strictly smaller than the outer silhouette.
+        assert (max_x - min_x) < 0.8 * (outline_max_x - outline_min_x)
+
+
+# --- Start point, direction and distribution ----------------------------------------
+
+
+def test_first_point_is_topmost() -> None:
     result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8))
-    main = result.dotted_refs[0]
-    # The dotted contour is not part of the remaining drawing.
-    dotted_ids = {(ref.path_id, ref.subpath_id) for ref in result.dotted_refs}
-    assert (main.path_id, main.subpath_id) not in {
-        (path.path_id, subpath_id)
-        for path in result.paths
-        for subpath_id, subpath in enumerate(path.subpaths)
-        if subpath in result.remaining_subpaths
-    }
-    # Exactly one remaining draw command (the internal detail), plus the points.
-    draw_count = result.tikz_code.count("\\draw[draw=")
-    assert draw_count == len(result.remaining_subpaths) == 1
-    assert "\\fill[dotToDotPoint]" in result.tikz_code
+    points = result.sequences[0].points
+    min_y = min(dot.position.y for dot in points)
+    assert points[0].position.y == pytest.approx(min_y, abs=3.0)
 
 
-# --- Valid TikZ / numbering ---------------------------------------------------------
+def test_start_point_hint_moves_point_one() -> None:
+    auto = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8))
+    hinted = run_dot_to_dot(
+        _MAIN_WITH_DETAIL,
+        (200, 200),
+        DotToDotConfig(total_points=8, start_point_hint=(180.0, 180.0)),
+    )
+    auto_first = auto.sequences[0].points[0].position
+    hinted_first = hinted.sequences[0].points[0].position
+    # The hinted start is near the bottom-right corner, not the top.
+    assert hinted_first.y > auto_first.y
+    assert hinted_first.x == pytest.approx(180.0, abs=6.0)
 
 
-def test_generated_tikz_is_structurally_valid() -> None:
-    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=6))
-    code = result.tikz_code
-    assert code.count("\\begin{tikzpicture}") == 1
-    assert code.count("\\end{tikzpicture}") == 1
-    assert code.count("\\begin{scope}") == code.count("\\end{scope}") == 1
-    assert "dotToDotPoint/.style" in code
-    assert "dotToDotLabel/.style" in code
-    assert code.count("\\fill[dotToDotPoint]") == 6
-    assert code.count("\\node[dotToDotLabel") == 6
+def test_direction_defaults_to_clockwise_and_can_invert() -> None:
+    forward = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8))
+    reverse = run_dot_to_dot(
+        _MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8, direction="reverse")
+    )
+    assert forward.silhouette.signed_area() > 0.0  # clockwise on screen
+    fwd = [(p.position.x, p.position.y) for p in forward.sequences[0].points]
+    rev = [(p.position.x, p.position.y) for p in reverse.sequences[0].points]
+    assert fwd[0] == pytest.approx(rev[0], abs=1e-6)
+    assert fwd[1] == pytest.approx(rev[-1], abs=1e-6)
 
 
-def test_numbering_uses_start_number_for_main_sequence() -> None:
-    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=5, start_number=10))
-    labels = [dot.label for dot in result.sequences[0].points]
-    assert labels == ["10", "11", "12", "13", "14"]
+def test_no_duplicate_points_on_closed_silhouette() -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=16))
+    positions = [
+        (round(dot.position.x, 4), round(dot.position.y, 4))
+        for dot in result.sequences[0].points
+    ]
+    assert len(set(positions)) == len(positions)
 
 
-def test_secondary_sequences_use_letter_prefixes() -> None:
-    config = DotToDotConfig(total_points=20, include_internal_contours=True, min_points_per_path=3)
-    result = run_dot_to_dot(_TWO_CONTOURS, (200, 200), config)
-    assert result.sequences[0].prefix == ""
-    assert result.sequences[1].prefix == "A"
-    assert result.sequences[1].points[0].label == "A1"
-    assert result.sequences[1].points[-1].label.startswith("A")
+def test_spacing_is_roughly_uniform() -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=16))
+    points = [dot.position for dot in result.sequences[0].points]
+    spacings = [points[i].distance_to(points[(i + 1) % len(points)]) for i in range(len(points))]
+    expected = result.silhouette.total_length / 16.0
+    for spacing in spacings:
+        assert spacing == pytest.approx(expected, rel=0.35)
 
 
-def test_reverse_direction_changes_numbering_order() -> None:
-    forward = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8, direction="forward"))
-    reverse = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=8, direction="reverse"))
-    fwd_positions = [(p.position.x, p.position.y) for p in forward.sequences[0].points]
-    rev_positions = [(p.position.x, p.position.y) for p in reverse.sequences[0].points]
-    # Same start point, opposite traversal order.
-    assert fwd_positions[0] == pytest.approx(rev_positions[0])
-    assert fwd_positions[1] != pytest.approx(rev_positions[1])
-    assert fwd_positions[1] == pytest.approx(rev_positions[-1])
+def test_excessive_point_count_warns_but_generates() -> None:
+    result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), DotToDotConfig(total_points=400))
+    assert result.point_count == 400
+    assert any("quantidade" in warning.lower() or "pontos" in warning.lower() for warning in result.warnings)
 
 
 def test_selected_segments_mode_raises_without_segments() -> None:

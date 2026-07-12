@@ -1,10 +1,10 @@
-"""Arc-length sampling, contour selection and point distribution."""
+"""Arc-length sampling helpers for the dot-to-dot pipeline."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fikzpy.core.dot_to_dot.models import SubPath, SvgPath, Vec2
+from fikzpy.core.dot_to_dot.models import SubPath, Vec2
 
 _EPS = 1e-9
 
@@ -109,100 +109,9 @@ def sample_length_interval(
     return points
 
 
-def _is_background_frame(subpath: SubPath, canvas_width: float, canvas_height: float) -> bool:
-    if canvas_width <= _EPS or canvas_height <= _EPS:
-        return False
-    min_x, min_y, max_x, max_y = subpath.bounding_box()
-    box_width = max_x - min_x
-    box_height = max_y - min_y
-    covers_canvas = box_width >= 0.98 * canvas_width and box_height >= 0.98 * canvas_height
-    box_area = box_width * box_height
-    fills_box = box_area > _EPS and subpath.area() >= 0.9 * box_area
-    return covers_canvas and fills_box
-
-
-def relevant_contours(
-    paths: list[SvgPath],
-    canvas_width: float,
-    canvas_height: float,
-    *,
-    min_area_ratio: float = 0.0005,
-    require_closed: bool = True,
-) -> list[ContourRef]:
-    """Return contours worth dotting, main contour first.
-
-    Excludes a full-canvas background/frame rectangle and tiny noise, then
-    ranks the survivors by area (falling back to arc length). The first entry
-    is treated as the main external contour.
-    """
-    canvas_area = max(canvas_width * canvas_height, 0.0)
-    noise_area = max(min_area_ratio * canvas_area, 1.0)
-    candidates: list[tuple[float, float, ContourRef]] = []
-    for path in paths:
-        for subpath_id, subpath in enumerate(path.subpaths):
-            if require_closed and not subpath.closed:
-                continue
-            if _is_background_frame(subpath, canvas_width, canvas_height):
-                continue
-            area = subpath.area()
-            if area < noise_area and subpath.total_length < max(0.02 * (canvas_width + canvas_height), 4.0):
-                continue
-            candidates.append((area, subpath.total_length, ContourRef(path.path_id, subpath_id, subpath)))
-    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return [entry[2] for entry in candidates]
-
-
-def identify_main_contour(
-    paths: list[SvgPath],
-    canvas_width: float,
-    canvas_height: float,
-) -> ContourRef | None:
-    """Return the main external contour, or ``None`` when nothing qualifies."""
-    contours = relevant_contours(paths, canvas_width, canvas_height)
-    if not contours:
-        # Relax the closed requirement for line-only figures.
-        contours = relevant_contours(paths, canvas_width, canvas_height, require_closed=False)
-    return contours[0] if contours else None
-
-
-def distribute_points(lengths: list[float], total: int, *, minimum: int = 1) -> list[int]:
-    """Split ``total`` points across paths proportionally to their length.
-
-    Guarantees at least ``minimum`` points per path and that the returned
-    counts sum exactly to ``total`` (largest-remainder rounding). Requires
-    ``total >= minimum * len(lengths)``.
-    """
-    count = len(lengths)
-    if count == 0:
-        return []
-    if total < minimum * count:
-        raise ValueError(
-            f"total ({total}) is too small for {count} paths with minimum {minimum} each."
-        )
-    remaining = total - minimum * count
-    total_length = sum(max(value, 0.0) for value in lengths)
-    if total_length <= _EPS:
-        base = [remaining // count] * count
-        for index in range(remaining - sum(base)):
-            base[index % count] += 1
-        return [minimum + value for value in base]
-
-    raw = [max(value, 0.0) / total_length * remaining for value in lengths]
-    floors = [int(value) for value in raw]
-    assigned = sum(floors)
-    remainder = remaining - assigned
-    order = sorted(range(count), key=lambda index: raw[index] - floors[index], reverse=True)
-    for position in range(remainder):
-        floors[order[position % count]] += 1
-    return [minimum + value for value in floors]
-
-
 __all__ = [
     "ContourRef",
     "SampledPoint",
-    "distribute_points",
-    "identify_main_contour",
-    "relevant_contours",
     "sample_length_interval",
     "sample_positions",
     "sample_subpath",
