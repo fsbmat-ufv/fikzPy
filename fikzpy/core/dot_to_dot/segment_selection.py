@@ -269,25 +269,52 @@ class InteractiveSelectionController:
 
     def click(self, x: float, y: float) -> SnapResult | None:
         """Register a snapped click, cycling start -> end -> restart."""
+        if self.start is not None and self.end is None:
+            return self._click_end(x, y)
         snap = snap_point_to_paths(self.paths, x, y)
         if snap is None:
             return None
-        if self.start is None:
-            self.start = snap
-            self.end = None
-            self.reverse = False
-        elif self.end is None:
-            if (snap.path_id, snap.subpath_id) != (self.start.path_id, self.start.subpath_id):
-                # Second click landed on another subpath: restart from here.
-                self.start = snap
-                self.end = None
-            else:
-                self.end = snap
-        else:
-            self.start = snap
-            self.end = None
-            self.reverse = False
+        self.start = snap
+        self.end = None
+        self.reverse = False
         return snap
+
+    def _click_end(self, x: float, y: float) -> SnapResult | None:
+        """Resolve the second click, preferring the subpath the arc started on.
+
+        Real traces contain many nearby subpaths; snapping the end globally
+        would silently restart the selection whenever the nearest curve is a
+        sibling ribbon. The end therefore snaps onto the start's subpath
+        unless the click is clearly on a different, much closer path.
+        """
+        assert self.start is not None
+        same = self._snap_to_subpath(self.start.path_id, self.start.subpath_id, x, y)
+        other = snap_point_to_paths(self.paths, x, y)
+        if same is None:
+            return None
+        if (
+            other is not None
+            and (other.path_id, other.subpath_id) != (same.path_id, same.subpath_id)
+            and same.distance > 3.0 * other.distance + 5.0
+        ):
+            # Clearly a click on another curve: restart the selection there.
+            self.start = other
+            self.end = None
+            self.reverse = False
+            return other
+        self.end = same
+        return same
+
+    def _snap_to_subpath(self, path_id: int, subpath_id: int, x: float, y: float) -> SnapResult | None:
+        for path in self.paths:
+            if path.path_id != path_id or not (0 <= subpath_id < len(path.subpaths)):
+                continue
+            subpath = path.subpaths[subpath_id]
+            length, point, distance = subpath.closest_length(Vec2(float(x), float(y)))
+            total = subpath.total_length
+            ratio = 0.0 if total <= _EPS else length / total
+            return SnapResult(path_id, subpath_id, length, ratio, point, distance)
+        return None
 
     def invert(self) -> None:
         """Toggle which of the two closed-path arcs is selected."""

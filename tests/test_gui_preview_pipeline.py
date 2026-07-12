@@ -195,18 +195,24 @@ def test_selected_segments_panel_visible_only_for_that_submode() -> None:
     assert not window.dtd_selection_group.isHidden()
 
 
+def _selection_svg() -> str:
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+        '<path d="M 0 0 L 40 0 L 40 40 L 0 40 Z"/></svg>'
+    )
+
+
 def test_selected_segments_config_includes_confirmed_segments() -> None:
+    import numpy as np
+
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
     window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Selecionar trechos"))
 
-    svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
-        '<path d="M 0 0 L 40 0 L 40 40 L 0 40 Z"/></svg>'
-    )
-    window.dot_to_dot_canvas.set_svg(svg, (100, 100))
-    controller = window.dot_to_dot_canvas.controller
+    base = np.full((100, 100, 3), 255, np.uint8)
+    window.dot_to_dot_layer.set_svg(_selection_svg(), base)
+    controller = window.dot_to_dot_layer.controller
     controller.set_point_count(4)
     controller.click(20.0, 0.0)
     controller.click(40.0, 20.0)
@@ -216,3 +222,40 @@ def test_selected_segments_config_includes_confirmed_segments() -> None:
     assert config.generation_mode.value == "selected_segments"
     assert len(config.selected_segments) == 1
     assert config.selected_segments[0].point_count == 4
+
+
+def test_no_secondary_canvas_in_side_panel() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    # The old DotToDotCanvas widget is gone; selection happens on the main
+    # preview through the interaction layer.
+    assert not hasattr(window, "dot_to_dot_canvas")
+    assert window.dot_to_dot_layer is not None
+    # No widget inside the selection group renders an image.
+    from PySide6.QtWidgets import QLabel, QPushButton
+
+    for child in window.dtd_selection_group.findChildren(object):
+        assert not type(child).__name__ == "DotToDotCanvas"
+
+
+def test_selection_layer_activates_only_in_selected_segments_submode() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Visual"))
+    assert window.dot_to_dot_layer.active is False
+
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Ponto a Ponto"))
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Selecionar trechos"))
+    assert window.dot_to_dot_layer.active is True
+
+    # Leaving the submode deactivates the layer and clears selections.
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Figura inteira"))
+    assert window.dot_to_dot_layer.active is False
+    assert window.dot_to_dot_layer.segments() == ()
+
+    # Leaving the mode entirely also keeps it inactive.
+    window.dtd_submode_combo.setCurrentIndex(window.dtd_submode_combo.findText("Selecionar trechos"))
+    assert window.dot_to_dot_layer.active is True
+    window.vectorization_mode_combo.setCurrentIndex(window.vectorization_mode_combo.findText("Classic Auto"))
+    assert window.dot_to_dot_layer.active is False

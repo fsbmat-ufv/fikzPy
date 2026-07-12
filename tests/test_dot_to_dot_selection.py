@@ -264,6 +264,30 @@ def test_controller_undo_clears_pending_first() -> None:
     assert len(controller.model) == 1
 
 
+def test_controller_second_click_prefers_start_subpath() -> None:
+    # Two nearby squares: the end click lands slightly nearer the second
+    # square, but only marginally, so the arc stays on the start's subpath.
+    svg = _svg('<path d="M 0 0 L 40 0 L 40 40 L 0 40 Z M 46 0 L 86 0 L 86 40 L 46 40 Z"/>')
+    controller = InteractiveSelectionController()
+    controller.set_paths(load_svg_paths(svg))
+    controller.click(20.0, 0.0)   # start on square 1
+    controller.click(43.5, 20.0)  # between the squares, nearer square 2
+    pending = controller.pending_segment()
+    assert pending is not None
+    assert pending.subpath_id == 0
+
+
+def test_controller_second_click_far_on_other_path_restarts() -> None:
+    svg = _svg('<path d="M 0 0 L 40 0 L 40 40 L 0 40 Z M 80 80 L 95 80 L 95 95 L 80 95 Z"/>')
+    controller = InteractiveSelectionController()
+    controller.set_paths(load_svg_paths(svg))
+    controller.click(20.0, 0.0)  # start on square 1
+    controller.click(88.0, 80.0)  # clearly on the distant square 2
+    assert controller.pending_segment() is None
+    assert controller.start is not None
+    assert controller.start.subpath_id == 1
+
+
 def test_controller_confirmed_segments_feed_pipeline() -> None:
     controller = InteractiveSelectionController(start_number=1)
     controller.set_paths(load_svg_paths(_SQUARE))
