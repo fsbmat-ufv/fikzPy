@@ -91,12 +91,14 @@ def _segment_commands(segment: Segment, transform: CoordinateTransform, precisio
     return ""
 
 
-def styles_block() -> str:
-    """Return the reusable ``\\tikzset`` block for points and labels."""
+def styles_block(*, ink_color: str = "black") -> str:
+    """Return the reusable ``\\tikzset`` block for points, labels and ink."""
+    color = _safe_color(ink_color)
     return (
         "  \\tikzset{\n"
         "    dotToDotPoint/.style={fill=black,draw=black},\n"
         "    dotToDotLabel/.style={font=\\sffamily\\scriptsize,inner sep=1pt},\n"
+        f"    dotToDotInk/.style={{fill={color},draw={color},line width=0pt,even odd rule}},\n"
         "  }"
     )
 
@@ -118,6 +120,28 @@ def render_remaining_drawing(
         if body:
             lines.append(f"  \\draw[draw={color}, line width={width}pt] {body};")
     return lines
+
+
+def render_filled_ink(
+    subpaths: Iterable[SubPath],
+    transform: CoordinateTransform,
+    *,
+    precision: int,
+) -> list[str]:
+    """Return one even-odd filled ``\\draw`` for the remaining ink regions.
+
+    All subpaths go into a single command so nested contours become holes,
+    matching how the Visual mode represents solid ink.
+    """
+    bodies = [
+        body
+        for subpath in subpaths
+        if (body := subpath_to_tikz_path(subpath, transform, precision))
+    ]
+    if not bodies:
+        return []
+    joined = "\n    ".join(bodies)
+    return [f"  \\draw[dotToDotInk] {joined};"]
 
 
 def _label_coordinate(dot, transform: CoordinateTransform, label_offset: float, precision: int) -> str:
@@ -170,18 +194,27 @@ def build_tikz_picture(
     line_color: str,
     line_width: float,
     precision: int,
+    remaining_render: str = "stroke",
 ) -> str:
-    """Assemble the complete ``tikzpicture`` for a dot-to-dot result."""
+    """Assemble the complete ``tikzpicture`` for a dot-to-dot result.
+
+    ``remaining_render`` selects how the kept drawing is emitted: ``"stroke"``
+    draws each subpath as a thin outline, ``"ink"`` fills all subpaths with a
+    single even-odd command (the Visual-mode look).
+    """
     lines = [f"\\begin{{tikzpicture}}[scale={_fmt(tikz_scale, 3)}]"]
-    lines.append(styles_block())
+    lines.append(styles_block(ink_color=line_color))
     lines.append("  \\begin{scope}[line cap=round, line join=round]")
-    drawing = render_remaining_drawing(
-        remaining_subpaths,
-        transform,
-        line_color=line_color,
-        line_width=line_width,
-        precision=precision,
-    )
+    if remaining_render == "ink":
+        drawing = render_filled_ink(remaining_subpaths, transform, precision=precision)
+    else:
+        drawing = render_remaining_drawing(
+            remaining_subpaths,
+            transform,
+            line_color=line_color,
+            line_width=line_width,
+            precision=precision,
+        )
     lines.extend(drawing)
     point_lines = render_points(
         sequences,
@@ -201,6 +234,7 @@ def build_tikz_picture(
 __all__ = [
     "CoordinateTransform",
     "build_tikz_picture",
+    "render_filled_ink",
     "render_points",
     "render_remaining_drawing",
     "styles_block",

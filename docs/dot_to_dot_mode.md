@@ -114,10 +114,21 @@ reconstruct the remaining drawing correctly. On a closed path there are two
 possible arcs between the two clicks; one is shown initially and **Inverter
 trecho** switches to the other.
 
+## Remaining drawing as filled ink
+
+The drawing that is *kept* (internal details in *Figura inteira*, everything
+except the selected arcs in *Selecionar trechos*) is re-rendered as **filled
+even-odd ink** — the same representation the Visual mode uses — instead of
+stroked ribbon outlines, which would look like the Contornos mode. The kept
+geometry is rasterized faithfully (even-odd, per original path), the corridors
+around the selected arcs are erased with a width proportional to the estimated
+stroke thickness, and the surviving ink is re-vectorized into smooth closed
+subpaths emitted as one `\draw[dotToDotInk]` command. The removed trechos are
+therefore genuinely absent from the output geometry — nothing is hidden under
+white bands.
+
 ## Known limitations
 
-- Internal details kept by `preserve_internal_details` are rendered as stroked
-  outlines, not re-filled, so a solid feature becomes an outline.
 - The silhouette is the outer boundary of the merged figure: fully disconnected
   secondary figures (e.g. a separate cloud) are dropped in *Figura inteira*;
   use *Selecionar trechos* to dot them.

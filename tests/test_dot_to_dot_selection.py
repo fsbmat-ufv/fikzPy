@@ -151,18 +151,36 @@ def test_multiple_segments_number_continuously() -> None:
     assert result.point_count == 7
 
 
+def _ink_contains(subpaths, x: float, y: float) -> bool:
+    """Even-odd containment test over the re-traced ink subpaths."""
+    import cv2
+    import numpy as np
+
+    inside = 0
+    for subpath in subpaths:
+        polygon = np.array(
+            [[p.x, p.y] for p in subpath.polyline()], np.float32
+        ).reshape(-1, 1, 2)
+        if cv2.pointPolygonTest(polygon, (float(x), float(y)), False) >= 0:
+            inside += 1
+    return inside % 2 == 1
+
+
 def test_selected_arcs_are_removed_from_the_drawing() -> None:
     config = DotToDotConfig(
         generation_mode="selected_segments",
         selected_segments=(SelectedSegment(0, 0, 0.0, 0.25, point_count=3),),
     )
     result = run_dot_to_dot(_SQUARE, (100, 100), config, width_units=10.0, precision=3)
-    # The removed top edge (0,0)->(40,0) becomes tikz (0,10)->(4,10); the drawing
-    # must not contain that straight top edge, but must contain the points.
+    # The points replace the removed top edge...
     assert "\\fill[dotToDotPoint]" in result.tikz_code
-    # Exactly one remaining open run (the other three edges).
-    assert len(result.remaining_subpaths) == 1
-    assert result.remaining_subpaths[0].closed is False
+    # ...and the remaining drawing is emitted as Visual-style filled ink.
+    assert result.tikz_code.count("\\draw[dotToDotInk]") == 1
+    assert all(subpath.closed for subpath in result.remaining_subpaths)
+    # The ink corridor along the removed arc is genuinely gone, while the
+    # untouched interior of the figure keeps its ink.
+    assert not _ink_contains(result.remaining_subpaths, 20.0, 1.0)
+    assert _ink_contains(result.remaining_subpaths, 20.0, 20.0)
 
 
 def test_unknown_segment_reference_raises() -> None:

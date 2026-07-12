@@ -81,9 +81,9 @@ def test_no_original_paths_by_default() -> None:
 def test_internal_details_only_when_requested() -> None:
     config = DotToDotConfig(total_points=10, preserve_internal_details=True)
     result = run_dot_to_dot(_MAIN_WITH_DETAIL, (200, 200), config)
-    # The inner square detail is kept as unnumbered lines...
+    # The inner square detail is kept, rendered as Visual-style filled ink...
     assert len(result.remaining_subpaths) >= 1
-    assert result.tikz_code.count("\\draw[draw=") == len(result.remaining_subpaths)
+    assert result.tikz_code.count("\\draw[dotToDotInk]") == 1
     # ...and the point count is unchanged.
     assert result.point_count == 10
     labels = _tikz_labels(result.tikz_code)

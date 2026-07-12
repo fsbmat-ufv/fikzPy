@@ -178,9 +178,21 @@ def test_real_image_manual_selection_flow(dino_svg) -> None:
     result = run_dot_to_dot(svg, shape, config)
     assert result.point_count == 10
     assert _labels(result.tikz_code) == [str(number) for number in range(1, 11)]
-    # The selected arcs were genuinely removed: the affected subpath is now
-    # split into open runs instead of the original closed loop.
-    assert any(not subpath.closed for subpath in result.remaining_subpaths)
+    # The remaining drawing keeps the Visual look (filled ink, one even-odd
+    # command) instead of contour-like stroked outlines.
+    assert result.tikz_code.count("\\draw[dotToDotInk]") == 1
+    assert "\\draw[draw=" not in result.tikz_code
+    # The selected arcs were genuinely removed from the ink: the midpoint of
+    # the first removed arc is no longer covered by any remaining region.
+    mid = main.point_at_length(main.total_length * 0.2)
+    inside = 0
+    for subpath in result.remaining_subpaths:
+        polygon = np.array(
+            [[p.x, p.y] for p in subpath.polyline()], np.float32
+        ).reshape(-1, 1, 2)
+        if cv2.pointPolygonTest(polygon, (float(mid.x), float(mid.y)), False) >= 0:
+            inside += 1
+    assert inside % 2 == 0  # even parity = outside the ink
 
 
 # --- Non-regression of the other four modes -------------------------------------------

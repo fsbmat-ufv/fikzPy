@@ -228,7 +228,7 @@ def test_silhouette_internal_details_exclude_boundary_ribbons() -> None:
         extra='<path d="M 45 45 L 55 45 L 55 55 L 45 55 Z"/>',
     )
     result = extract_silhouette(load_svg_paths(svg), 100.0, 100.0, collect_internal_details=True)
-    boxes = [detail.bounding_box() for detail in result.internal_details]
+    boxes = [detail.bounding_box() for group in result.internal_details for detail in group]
     # The inner detail square is kept; the outline ribbons are excluded.
     assert any((box[2] - box[0]) < 20.0 for box in boxes)
     assert all((box[2] - box[0]) < 60.0 for box in boxes)

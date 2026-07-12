@@ -21,12 +21,8 @@ from fikzpy.core.dot_to_dot.label_layout import layout_labels
 from fikzpy.core.dot_to_dot.label_placement import build_dot_points
 from fikzpy.core.dot_to_dot.models import DotPoint, DotSequence, SubPath, SvgPath, Vec2
 from fikzpy.core.dot_to_dot.path_sampler import ContourRef, SampledPoint
-from fikzpy.core.dot_to_dot.segment_selection import (
-    remaining_runs_after_removal,
-    resolve_arc,
-    sample_selected_segment,
-)
-from fikzpy.core.dot_to_dot.silhouette import SilhouetteError, extract_silhouette
+from fikzpy.core.dot_to_dot.segment_selection import resolve_arc, sample_selected_segment
+from fikzpy.core.dot_to_dot.silhouette import SilhouetteError, extract_silhouette, retrace_ink_regions
 from fikzpy.core.dot_to_dot.svg_loader import SvgLoaderConfig, load_svg_paths
 from fikzpy.core.dot_to_dot.tikz_exporter import CoordinateTransform, build_tikz_picture
 
@@ -92,6 +88,8 @@ def run_dot_to_dot(
             paths,
             config,
             transform,
+            canvas_width=width,
+            canvas_height=height,
             tikz_scale=tikz_scale,
             line_color=line_color,
             line_width=line_width,
@@ -162,7 +160,13 @@ def _run_full_figure(
             "os numeros podem ficar proximos demais."
         )
 
-    remaining = list(silhouette_result.internal_details) if config.preserve_internal_details else []
+    # Internal details are re-rendered as filled ink so they keep the Visual
+    # look (solid strokes) instead of contour-like stroked ribbon outlines.
+    remaining: list[SubPath] = []
+    if config.preserve_internal_details and silhouette_result.internal_details:
+        remaining = retrace_ink_regions(
+            silhouette_result.internal_details, canvas_width, canvas_height
+        )
 
     tikz_code = build_tikz_picture(
         config,
@@ -173,6 +177,7 @@ def _run_full_figure(
         line_color=line_color,
         line_width=line_width,
         precision=precision,
+        remaining_render="ink",
     )
     return DotToDotResult(
         tikz_code=tikz_code,
@@ -206,6 +211,8 @@ def _run_selected_segments(
     config: DotToDotConfig,
     transform: CoordinateTransform,
     *,
+    canvas_width: float,
+    canvas_height: float,
     tikz_scale: float,
     line_color: str,
     line_width: float,
@@ -219,7 +226,8 @@ def _run_selected_segments(
         for subpath_id, subpath in enumerate(path.subpaths):
             lookup[(path.path_id, subpath_id)] = subpath
 
-    removed_by_subpath: dict[tuple[int, int], list[tuple[float, float, bool]]] = {}
+    erase_polylines: list[list[Vec2]] = []
+    dotted_keys: dict[tuple[int, int], None] = {}
     dot_points: list[DotPoint] = []
     reverse = config.direction is NumberingDirection.REVERSE
     next_number = config.start_number
@@ -242,7 +250,8 @@ def _run_selected_segments(
         dot_points.extend(build_dot_points(samples, labels, centroid=centroid, flip_y=True))
 
         arc = resolve_arc(subpath, segment)
-        removed_by_subpath.setdefault(key, []).append((arc.removed_start, arc.removed_end, arc.wrap))
+        erase_polylines.append(_arc_polyline(subpath, arc))
+        dotted_keys.setdefault(key)
 
     first_key = (ordered_segments[0].path_id, ordered_segments[0].subpath_id)
     sequences = (
@@ -254,10 +263,14 @@ def _run_selected_segments(
         ),
     )
 
-    remaining = _remaining_after_selection(paths, removed_by_subpath)
+    # Re-render the remaining drawing as filled ink (the Visual-mode look):
+    # the corridors around the selected arcs are erased from the ink itself,
+    # so the removed trechos are genuinely absent from the output.
+    groups = [list(path.subpaths) for path in paths]
+    remaining = retrace_ink_regions(groups, canvas_width, canvas_height, erase_polylines)
     dotted_refs = tuple(
         ContourRef(path_id, subpath_id, lookup[(path_id, subpath_id)])
-        for (path_id, subpath_id) in removed_by_subpath
+        for (path_id, subpath_id) in dotted_keys
     )
 
     tikz_code = build_tikz_picture(
@@ -269,6 +282,7 @@ def _run_selected_segments(
         line_color=line_color,
         line_width=line_width,
         precision=precision,
+        remaining_render="ink",
     )
     return DotToDotResult(
         tikz_code=tikz_code,
@@ -280,20 +294,22 @@ def _run_selected_segments(
     )
 
 
-def _remaining_after_selection(
-    paths: list[SvgPath],
-    removed_by_subpath: dict[tuple[int, int], list[tuple[float, float, bool]]],
-) -> list[SubPath]:
-    remaining: list[SubPath] = []
-    for path in paths:
-        for subpath_id, subpath in enumerate(path.subpaths):
-            key = (path.path_id, subpath_id)
-            if key not in removed_by_subpath:
-                remaining.append(subpath)
-                continue
-            for run in remaining_runs_after_removal(subpath, removed_by_subpath[key]):
-                remaining.append(SubPath(run, closed=False))
-    return remaining
+def _arc_polyline(subpath: SubPath, arc, *, step: float = 2.0) -> list[Vec2]:
+    """Sample the removed arc as a dense polyline for corridor erasing."""
+    total = subpath.total_length
+    if arc.wrap:
+        span = (arc.removed_end - arc.removed_start) % total
+        if span <= 0.0:
+            span = total
+    else:
+        span = max(arc.removed_end - arc.removed_start, 0.0)
+    count = max(2, int(span / max(step, 1e-6)) + 2)
+    points: list[Vec2] = []
+    for index in range(count):
+        raw = arc.removed_start + span * index / (count - 1)
+        length = raw % total if arc.wrap else raw
+        points.append(subpath.point_at_length(length, wrap=arc.wrap))
+    return points
 
 
 __all__ = ["DotToDotError", "DotToDotResult", "run_dot_to_dot"]
