@@ -1,0 +1,109 @@
+{
+  "before": {
+    "coordinate_occurrences": 401,
+    "line_operators": 400,
+    "beziers": 0,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 7679,
+    "svg_bytes": 10778,
+    "paths": 1,
+    "subpaths": 1,
+    "closed_subpaths": 0,
+    "segments": 400,
+    "cubic_segments": 0
+  },
+  "candidate": {
+    "coordinate_occurrences": 409,
+    "line_operators": 0,
+    "beziers": 136,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 9423,
+    "svg_bytes": 10234,
+    "paths": 1,
+    "subpaths": 1,
+    "closed_subpaths": 0,
+    "segments": 136,
+    "cubic_segments": 136
+  },
+  "details": {
+    "exact_cubic_subdivision_levels": 3,
+    "arc_to_cubic_is_approximate": false,
+    "geometric_bound": 0.022455433165284745
+  },
+  "conversion_seconds": 0.013362400000914931,
+  "svg_metrics": {
+    "foreground_iou": 0.9906230721776681,
+    "rgb_mae_255": 0.04683482142857143,
+    "edge_p95_pixels": 0.0,
+    "edge_max_pixels": 1.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "topology_equal": true,
+    "alpha_topology_equal": true
+  },
+  "structure": {
+    "subpath_count_equal": true,
+    "closed_flags_equal": true
+  },
+  "status": "rejected",
+  "rejection_reasons": [
+    "not_smaller_in_both_metrics"
+  ],
+  "compile_and_render_seconds": 0.4589637000026414,
+  "pdf_metrics": {
+    "foreground_iou": 0.9934711643090316,
+    "rgb_mae_255": 0.029582252225963928,
+    "edge_p95_pixels": 0.0,
+    "edge_max_pixels": 1.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "topology_equal": true
+  },
+  "original_to_baseline": {
+    "foreground_iou": 0.9137357653935302,
+    "rgb_mae_255": 0.37528687134756583,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 1.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "topology_equal": true
+  },
+  "original_to_candidate": {
+    "foreground_iou": 0.9131573644972799,
+    "rgb_mae_255": 0.38200616724106656,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 1.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 0
+    },
+    "topology_equal": true
+  },
+  "coordinate_reduction_percent": -1.9950124688279391,
+  "byte_reduction_percent": -22.71129053262144,
+  "seconds": 0.6702224000036949
+}
