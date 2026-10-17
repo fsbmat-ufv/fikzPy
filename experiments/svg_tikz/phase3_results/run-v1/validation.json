@@ -1,0 +1,24 @@
+{
+  "test_command": "python -B -m pytest -p no:cacheprovider",
+  "pytest_disable_plugin_autoload": true,
+  "qt_qpa_platform": "offscreen",
+  "tests_passed": 700,
+  "test_seconds": 38.29,
+  "pdf_count": 20,
+  "all_pdfs_single_page": true,
+  "staged_pdf_bytes_match_working_files": true,
+  "experiment_source_hashes_match_run": {
+    "optimizer.py": true,
+    "phase2.py": true,
+    "phase2_geometry.py": true,
+    "phase2_reference.py": true,
+    "phase3.py": true,
+    "phase3_metrics.py": true,
+    "reconstruction.py": true,
+    "run.py": true,
+    "validation.py": true,
+    "__init__.py": true
+  },
+  "only_new_experiment_and_test_files_staged": true,
+  "history_hashes_checked_by_runner": true
+}
