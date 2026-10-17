@@ -1,0 +1,169 @@
+{
+  "case": "cara_existing_svg",
+  "source_reference": "examples/comparison/visual_cara_output.svg",
+  "source_sha256": "0b07a1fd73b386d735321b8ea61783961777a7911f6829d5d4ecaad9e5bf29da",
+  "input_svg_sha256": "512e6ad65833e13f961b74b8218546c2e548643d7a5b968149f962b165f7e9da",
+  "before": {
+    "coordinate_occurrences": 812,
+    "line_operators": 694,
+    "beziers": 21,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 16705,
+    "svg_bytes": 11363,
+    "paths": 1,
+    "subpaths": 55,
+    "closed_subpaths": 55,
+    "segments": 715,
+    "cubic_segments": 21
+  },
+  "candidate": {
+    "coordinate_occurrences": 762,
+    "line_operators": 644,
+    "beziers": 21,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 15715,
+    "svg_bytes": 10692,
+    "paths": 1,
+    "subpaths": 55,
+    "closed_subpaths": 55,
+    "segments": 715,
+    "cubic_segments": 21
+  },
+  "tracing_seconds": 0.0,
+  "before_conversion_seconds": 0.06343039999774192,
+  "candidate_conversion_seconds": 0.06201969999528956,
+  "optimization": {
+    "config": {
+      "tolerance": 0.25,
+      "corner_degrees": 35.0,
+      "render_scale": 4.0,
+      "minimum_iou": 0.99,
+      "maximum_mae": 0.5,
+      "sample_step": 0.0625
+    },
+    "warnings": [],
+    "operations": {
+      "unchanged": 398
+    },
+    "maximum_error_bound": 0.0,
+    "svg_visual_metrics": {
+      "foreground_iou": 1.0,
+      "rgb_mae_255": 0.0,
+      "edge_p95_pixels": 0.0,
+      "edge_max_pixels": 0.0,
+      "before_topology": {
+        "components": 21,
+        "holes": 33
+      },
+      "after_topology": {
+        "components": 21,
+        "holes": 33
+      },
+      "topology_equal": true,
+      "alpha_topology_equal": true
+    },
+    "candidate_accepted": true,
+    "per_paint_metrics": [],
+    "seconds": 0.3024318999960087
+  },
+  "compile_status": "success",
+  "final_gate": "accepted",
+  "compile_and_render_seconds": 1.1275422999970033,
+  "pdf_candidate_metrics": {
+    "foreground_iou": 1.0,
+    "rgb_mae_255": 0.0,
+    "edge_p95_pixels": 0.0,
+    "edge_max_pixels": 0.0,
+    "before_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "after_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "topology_equal": true
+  },
+  "original_to_candidate_pdf": {
+    "foreground_iou": 0.9163424124513618,
+    "rgb_mae_255": 3.1469386278977254,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 4.123105525970459,
+    "before_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "after_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "topology_equal": true
+  },
+  "accepted_optimization": true,
+  "rejection_reasons": [],
+  "final_maximum_error_bound": 0.0,
+  "after": {
+    "coordinate_occurrences": 762,
+    "line_operators": 644,
+    "beziers": 21,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 15715,
+    "svg_bytes": 10692,
+    "paths": 1,
+    "subpaths": 55,
+    "closed_subpaths": 55,
+    "segments": 715,
+    "cubic_segments": 21
+  },
+  "coordinate_reduction_percent": 6.157635467980294,
+  "tikz_reduction_percent": 5.926369350493865,
+  "pdf_final_metrics": {
+    "foreground_iou": 1.0,
+    "rgb_mae_255": 0.0,
+    "edge_p95_pixels": 0.0,
+    "edge_max_pixels": 0.0,
+    "before_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "after_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "topology_equal": true
+  },
+  "original_to_baseline_pdf": {
+    "foreground_iou": 0.9163424124513618,
+    "rgb_mae_255": 3.1469386278977254,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 4.123105525970459,
+    "before_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "after_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "topology_equal": true
+  },
+  "original_to_final_pdf": {
+    "foreground_iou": 0.9163424124513618,
+    "rgb_mae_255": 3.1469386278977254,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 4.123105525970459,
+    "before_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "after_topology": {
+      "components": 21,
+      "holes": 34
+    },
+    "topology_equal": true
+  },
+  "case_total_seconds": 1.8463560000018333
+}
