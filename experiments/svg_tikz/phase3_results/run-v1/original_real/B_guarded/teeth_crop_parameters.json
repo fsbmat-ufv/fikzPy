@@ -1,0 +1,11 @@
+{
+  "baseline": "../before.png",
+  "candidate": "candidate.png",
+  "crop_xywh": [
+    205,
+    70,
+    96,
+    96
+  ],
+  "display_zoom": 4
+}

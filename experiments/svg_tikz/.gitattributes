@@ -1,0 +1,4 @@
+runs/**/*.pdf binary
+runs/**/*.png binary
+# Compiler output is evidence; retain its original whitespace.
+runs/**/*_compile.txt -whitespace

@@ -1,0 +1,31 @@
+{
+  "purpose": "diagnostic only; does not change the 180 dpi decision",
+  "baseline": {
+    "components": 33,
+    "holes": 56
+  },
+  "candidate": {
+    "components": 33,
+    "holes": 56
+  },
+  "merged_holes_at_180_dpi": {
+    "baseline_hole_pixels": [
+      416,
+      24
+    ],
+    "baseline_hole_bboxes": [
+      [
+        226,
+        95,
+        258,
+        120
+      ],
+      [
+        259,
+        109,
+        263,
+        119
+      ]
+    ]
+  }
+}

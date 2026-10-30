@@ -1,0 +1,155 @@
+{
+  "status": "rejected",
+  "rejection_reasons": [
+    "svg_fidelity_or_topology",
+    "pdf_fidelity_or_topology",
+    "continuous_geometric_bound",
+    "original_raster_regression",
+    "not_smaller_in_both_metrics"
+  ],
+  "candidate": {
+    "svg_bytes": 4633,
+    "paths": 1,
+    "subpaths": 4,
+    "closed_subpaths": 4,
+    "segments": 114,
+    "cubic_segments": 107,
+    "coordinate_occurrences": 332,
+    "line_operators": 7,
+    "beziers": 107,
+    "arc_operators": 0,
+    "draw_commands": 1,
+    "tikz_bytes": 7661,
+    "conversion_seconds": 0.025709199995617382,
+    "compile_render_seconds": 0.45800920000328915
+  },
+  "svg_metrics": {
+    "foreground_iou": 0.900103634613961,
+    "rgb_mae_255": 1.9855931712962962,
+    "edge_p95_pixels": 2.0,
+    "edge_max_pixels": 3.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "topology_equal": true,
+    "alpha_topology_equal": true
+  },
+  "pdf_metrics": {
+    "foreground_iou": 0.9023661929241004,
+    "rgb_mae_255": 2.012643242872521,
+    "edge_p95_pixels": 2.0,
+    "edge_max_pixels": 3.1622776985168457,
+    "before_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "topology_equal": true
+  },
+  "svg_region_identity": {
+    "component_identity": true,
+    "hole_identity": true
+  },
+  "pdf_region_identity": {
+    "component_identity": true,
+    "hole_identity": true
+  },
+  "original_to_baseline": {
+    "foreground_iou": 0.8078972407231209,
+    "rgb_mae_255": 4.758174124887806,
+    "edge_p95_pixels": 2.8284270763397217,
+    "edge_max_pixels": 13.416407585144043,
+    "before_topology": {
+      "components": 1,
+      "holes": 7
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "topology_equal": false
+  },
+  "original_to_candidate": {
+    "foreground_iou": 0.782513695810507,
+    "rgb_mae_255": 4.78223803290225,
+    "edge_p95_pixels": 3.0,
+    "edge_max_pixels": 13.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 7
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "topology_equal": false
+  },
+  "calibrated_qt_to_pdf_candidate": {
+    "foreground_iou": 0.9898041428226001,
+    "rgb_mae_255": 0.19926227870597601,
+    "edge_p95_pixels": 1.0,
+    "edge_max_pixels": 1.0,
+    "before_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "after_topology": {
+      "components": 1,
+      "holes": 3
+    },
+    "topology_equal": true
+  },
+  "geometry": {
+    "rings": [
+      {
+        "baseline_to_candidate_bound": 0.7062551533641542,
+        "raw_to_baseline_bound": 0.7065675527900432,
+        "raw_to_candidate_bound": 0.6477713226013511,
+        "winding_equal": true,
+        "closed_equal": true,
+        "geometry_unchanged": false
+      },
+      {
+        "baseline_to_candidate_bound": 0.5708777559001669,
+        "raw_to_baseline_bound": 0.39051303848800534,
+        "raw_to_candidate_bound": 0.6198554636118876,
+        "winding_equal": true,
+        "closed_equal": true,
+        "geometry_unchanged": false
+      },
+      {
+        "baseline_to_candidate_bound": 0.7062277069672072,
+        "raw_to_baseline_bound": 0.7110816789428501,
+        "raw_to_candidate_bound": 0.7140091460998934,
+        "winding_equal": true,
+        "closed_equal": true,
+        "geometry_unchanged": false
+      },
+      {
+        "baseline_to_candidate_bound": 0.49646309724518856,
+        "raw_to_baseline_bound": 0.4967816207600652,
+        "raw_to_candidate_bound": 0.6409987431680432,
+        "winding_equal": true,
+        "closed_equal": true,
+        "geometry_unchanged": false
+      }
+    ],
+    "maximum_error_bound": 0.7062551533641542,
+    "maximum_raw_baseline_bound": 0.7110816789428501,
+    "maximum_raw_candidate_bound": 0.7140091460998934,
+    "changed_rings": 4,
+    "winding_equal": true,
+    "closed_equal": true
+  },
+  "coordinate_reduction_percent": -155.38461538461536,
+  "byte_reduction_percent": -178.88605751729162,
+  "segment_reduction_percent": -1.7857142857142794
+}

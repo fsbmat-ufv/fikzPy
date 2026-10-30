@@ -1,0 +1,28 @@
+{
+  "base_commit": "cc032f3b92bd145d827f11e3e7ed4bb617678d2d",
+  "config": {
+    "tolerance": 0.25,
+    "corner_degrees": 35.0,
+    "render_scale": 4.0,
+    "minimum_iou": 0.99,
+    "maximum_mae": 0.5,
+    "sample_step": 0.0625
+  },
+  "latex": "C:\\Program Files\\MiKTeX\\miktex\\bin\\x64\\pdflatex.exe",
+  "poppler": "C:\\Users\\Fernando\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin\\pdftoppm.EXE",
+  "python": "3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "experiment_source_sha256": {
+    "optimizer.py": "6a6f4e32db7612e083d27dd0c7539b775032677052f06592ab67216a42bd78a3",
+    "run.py": "0e162c62d7e1c11d3f33da746ccdc0e78aeed1334320587b17895b8f40b24f9e",
+    "validation.py": "a004d658b6ff2ee2455945a0426bc821e8ce0802d9475bf769db9a89b4e4f8cf",
+    "__init__.py": "b599cb0992e6b9156e4db433156a80e1c3aa37bfe2f002d073309e506dffe687"
+  },
+  "packages": {
+    "numpy": "2.4.6",
+    "opencv-python": "4.13.0.92",
+    "PySide6": "6.11.1",
+    "svg2tikz": "3.3.2",
+    "Pillow": "12.2.0"
+  }
+}
