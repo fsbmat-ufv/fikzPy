@@ -42,3 +42,4 @@ examples/example_output.tex
 
 - [Usage](usage.md)
 - [Development](development.md)
+- [Ponto a Ponto (dot-to-dot) mode](dot_to_dot_mode.md)

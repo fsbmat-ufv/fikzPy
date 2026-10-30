@@ -155,7 +155,9 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
             min_area=settings.min_contour_area,
             min_perimeter=settings.min_contour_perimeter,
         )
-    elif vector_config.mode == "visual":
+    elif vector_config.mode in {"visual", "dot_to_dot"}:
+        # Dot-to-dot reuses the Visual tracing to obtain the same intermediate
+        # ink contours; the Visual branch itself is left unchanged.
         visual_result = trace_visual_contours(
             image,
             visual_settings_from_processing(settings),
@@ -217,7 +219,7 @@ def process_image(image: np.ndarray, settings: ProcessingSettings | None = None)
         raise ValueError(f"Unsupported vectorization mode: {vector_config.mode}")
 
     overlay = make_overlay(image, contours)
-    if vector_config.mode == "visual":
+    if vector_config.mode in {"visual", "dot_to_dot"}:
         reconstruction = make_filled_reconstruction(image.shape, contours)
     else:
         reconstruction = make_reconstruction(image.shape, contours)

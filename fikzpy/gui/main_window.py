@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -31,10 +32,14 @@ from PySide6.QtWidgets import (
 )
 
 from fikzpy.core.diagnostics import log_event, sha256_file
+from fikzpy.core.dot_to_dot import DotToDotConfig
 from fikzpy.core.image_processor import ProcessingResult, ProcessingSettings, load_image
+from fikzpy.core.image_processor import process_image, visual_settings_from_processing
 from fikzpy.core.tikz_generator import TikzOptions, wrap_standalone_document
 from fikzpy.core.tikz_pipeline import TikzBuildResult, build_tikz_from_image
+from fikzpy.core.visual_pipeline import contours_to_svg
 from fikzpy.gui.code_editor import CodeEditor
+from fikzpy.gui.dot_to_dot_selection import DotToDotSelectionLayer
 from fikzpy.gui.image_viewer import ImageViewer
 from fikzpy.templates import get_template_groups
 
@@ -64,6 +69,7 @@ class MainWindow(QMainWindow):
         self.preview_counter = 0
 
         self.image_viewer = ImageViewer()
+        self.dot_to_dot_layer = DotToDotSelectionLayer(self.image_viewer, parent=self)
         self.code_editor = CodeEditor()
         self.status_label = QLabel("Pronto")
 
@@ -140,10 +146,10 @@ class MainWindow(QMainWindow):
 
         self.vectorization_mode_combo = QComboBox()
         self.vectorization_mode_combo.addItem("Classic Auto", ("classic", "auto"))
-        self.vectorization_mode_combo.addItem("Classic Line Art", ("classic", "line_art"))
         self.vectorization_mode_combo.addItem("Classic Filled", ("classic", "filled"))
         self.vectorization_mode_combo.addItem("Visual", ("visual", "auto"))
         self.vectorization_mode_combo.addItem("Contornos", ("contours", "auto"))
+        self.vectorization_mode_combo.addItem("Ponto a Ponto", ("dot_to_dot", "full_figure"))
         form.addRow("Modo", self.vectorization_mode_combo)
 
         self.ink_threshold_spin = QSpinBox()
@@ -208,6 +214,8 @@ class MainWindow(QMainWindow):
         regenerate_button.clicked.connect(self.generate_tikz)
         form.addRow("", regenerate_button)
 
+        self._build_dot_to_dot_group(form)
+
         for widget in (
             self.smoothing_spin,
             self.canny_low_spin,
@@ -222,10 +230,190 @@ class MainWindow(QMainWindow):
             widget.valueChanged.connect(self._settings_changed)
         self.bezier_check.stateChanged.connect(self._settings_changed)
         self.vectorization_mode_combo.currentIndexChanged.connect(self._settings_changed)
+        self.vectorization_mode_combo.currentIndexChanged.connect(self._update_dot_to_dot_visibility)
         self.line_color_edit.editingFinished.connect(self._settings_changed)
+
+        self._update_dot_to_dot_visibility()
 
         dock.setWidget(panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    def _build_dot_to_dot_group(self, form: QFormLayout) -> None:
+        """Build the Ponto a Ponto options panel (shown only for that mode)."""
+        self.dot_to_dot_group = QGroupBox("Ponto a Ponto")
+        group_form = QFormLayout(self.dot_to_dot_group)
+
+        self.dtd_submode_combo = QComboBox()
+        self.dtd_submode_combo.addItem("Figura inteira", "full_figure")
+        self.dtd_submode_combo.addItem("Selecionar trechos", "selected_segments")
+        group_form.addRow("Submodo", self.dtd_submode_combo)
+
+        self.dtd_total_points_spin = QSpinBox()
+        self.dtd_total_points_spin.setRange(2, 500)
+        self.dtd_total_points_spin.setValue(20)
+        group_form.addRow("Numero de pontos", self.dtd_total_points_spin)
+
+        self.dtd_start_number_spin = QSpinBox()
+        self.dtd_start_number_spin.setRange(0, 9999)
+        self.dtd_start_number_spin.setValue(1)
+        group_form.addRow("Numero inicial", self.dtd_start_number_spin)
+
+        self.dtd_point_radius_spin = QDoubleSpinBox()
+        self.dtd_point_radius_spin.setRange(0.2, 20.0)
+        self.dtd_point_radius_spin.setDecimals(2)
+        self.dtd_point_radius_spin.setSingleStep(0.5)
+        self.dtd_point_radius_spin.setValue(2.0)
+        group_form.addRow("Tamanho dos pontos (pt)", self.dtd_point_radius_spin)
+
+        self.dtd_label_offset_spin = QDoubleSpinBox()
+        self.dtd_label_offset_spin.setRange(0.0, 5.0)
+        self.dtd_label_offset_spin.setDecimals(2)
+        self.dtd_label_offset_spin.setSingleStep(0.05)
+        self.dtd_label_offset_spin.setValue(0.35)
+        group_form.addRow("Distancia dos numeros", self.dtd_label_offset_spin)
+
+        self.dtd_direction_combo = QComboBox()
+        self.dtd_direction_combo.addItem("Horario", "forward")
+        self.dtd_direction_combo.addItem("Anti-horario", "reverse")
+        group_form.addRow("Direcao", self.dtd_direction_combo)
+
+        self.dtd_preserve_details_check = QCheckBox("Manter detalhes internos")
+        self.dtd_preserve_details_check.setChecked(False)
+        group_form.addRow("", self.dtd_preserve_details_check)
+
+        self.dtd_preview_button = QPushButton("Gerar/atualizar previsualizacao")
+        self.dtd_preview_button.clicked.connect(self.generate_tikz)
+        group_form.addRow("", self.dtd_preview_button)
+
+        self._build_segment_selection_panel(group_form)
+
+        for widget in (
+            self.dtd_total_points_spin,
+            self.dtd_start_number_spin,
+            self.dtd_point_radius_spin,
+            self.dtd_label_offset_spin,
+        ):
+            widget.valueChanged.connect(self._settings_changed)
+        for combo in (self.dtd_submode_combo, self.dtd_direction_combo):
+            combo.currentIndexChanged.connect(self._settings_changed)
+        self.dtd_submode_combo.currentIndexChanged.connect(self._update_dot_to_dot_visibility)
+        self.dtd_preserve_details_check.stateChanged.connect(self._settings_changed)
+
+        form.addRow(self.dot_to_dot_group)
+
+    def _build_segment_selection_panel(self, group_form: QFormLayout) -> None:
+        """Build the 'Selecionar trechos' controls (buttons only, no canvas).
+
+        The selection itself happens directly on the main preview image via
+        :class:`DotToDotSelectionLayer`.
+        """
+        self.dtd_selection_group = QGroupBox("Selecionar trechos")
+        selection_layout = QVBoxLayout(self.dtd_selection_group)
+
+        self.dtd_selection_status = QLabel("Nenhum trecho confirmado")
+        self.dtd_selection_status.setWordWrap(True)
+        selection_layout.addWidget(self.dtd_selection_status)
+
+        self.dot_to_dot_layer.selectionChanged.connect(self._update_selection_status)
+
+        buttons_top = QHBoxLayout()
+        self.dtd_new_segment_button = QPushButton("Novo trecho")
+        self.dtd_new_segment_button.clicked.connect(self._dtd_new_segment)
+        self.dtd_invert_button = QPushButton("Inverter")
+        self.dtd_invert_button.clicked.connect(self._dtd_invert_segment)
+        self.dtd_confirm_button = QPushButton("Confirmar")
+        self.dtd_confirm_button.clicked.connect(self._dtd_confirm_segment)
+        buttons_top.addWidget(self.dtd_new_segment_button)
+        buttons_top.addWidget(self.dtd_invert_button)
+        buttons_top.addWidget(self.dtd_confirm_button)
+        selection_layout.addLayout(buttons_top)
+
+        buttons_bottom = QHBoxLayout()
+        self.dtd_cancel_button = QPushButton("Cancelar")
+        self.dtd_cancel_button.clicked.connect(self._dtd_cancel_segment)
+        self.dtd_undo_button = QPushButton("Desfazer")
+        self.dtd_undo_button.clicked.connect(self._dtd_undo_segment)
+        self.dtd_delete_button = QPushButton("Excluir")
+        self.dtd_delete_button.clicked.connect(self._dtd_delete_segment)
+        buttons_bottom.addWidget(self.dtd_cancel_button)
+        buttons_bottom.addWidget(self.dtd_undo_button)
+        buttons_bottom.addWidget(self.dtd_delete_button)
+        selection_layout.addLayout(buttons_bottom)
+
+        self.dtd_generate_segments_button = QPushButton("Gerar TikZ")
+        self.dtd_generate_segments_button.clicked.connect(self.generate_tikz)
+        selection_layout.addWidget(self.dtd_generate_segments_button)
+
+        group_form.addRow(self.dtd_selection_group)
+
+    def _update_dot_to_dot_visibility(self, *args) -> None:
+        mode, _strategy = self._selected_mode_and_strategy()
+        is_dot = mode == "dot_to_dot"
+        self.dot_to_dot_group.setVisible(is_dot)
+        submode = self.dtd_submode_combo.currentData() or "full_figure"
+        selecting = is_dot and submode == "selected_segments"
+        self.dtd_selection_group.setVisible(selecting)
+        if selecting:
+            self._ensure_dot_to_dot_geometry()
+            self.dot_to_dot_layer.activate()
+        elif self.dot_to_dot_layer.active:
+            # Leaving the mode: drop the event filter, clear the overlays and
+            # restore the normal preview rendering.
+            self.dot_to_dot_layer.deactivate()
+            self.dot_to_dot_layer.clear()
+            self._update_view()
+
+    def _update_selection_status(self, *args) -> None:
+        self.dtd_selection_status.setText(self.dot_to_dot_layer.numbering_summary())
+
+    def _ensure_dot_to_dot_geometry(self) -> None:
+        """Load the traced SVG into the selection layer when missing."""
+        if self.original_image is None or self.dot_to_dot_layer.has_geometry():
+            return
+        self._refresh_dot_to_dot_geometry()
+
+    def _refresh_dot_to_dot_geometry(self) -> None:
+        if self.original_image is None:
+            return
+        settings = ProcessingSettings(
+            vectorization_mode="dot_to_dot",
+            smoothing=self.smoothing_spin.value(),
+            canny_low=self.canny_low_spin.value(),
+            canny_high=self.canny_high_spin.value(),
+            simplify_epsilon=self.simplify_spin.value(),
+            line_art_threshold=self.ink_threshold_spin.value(),
+            stroke_smoothing=self.stroke_smoothing_spin.value(),
+        )
+        result = process_image(self.original_image, settings)
+        svg = contours_to_svg(
+            result.contours,
+            result.original_bgr.shape,
+            options=self.tikz_options(),
+            settings=visual_settings_from_processing(settings),
+        )
+        self.dot_to_dot_layer.set_start_number(self.dtd_start_number_spin.value())
+        self.dot_to_dot_layer.set_point_count(self.dtd_total_points_spin.value())
+        self.dot_to_dot_layer.set_svg(svg, self.original_image)
+
+    def _dtd_new_segment(self) -> None:
+        self.dot_to_dot_layer.set_point_count(self.dtd_total_points_spin.value())
+        self.dot_to_dot_layer.new_segment()
+
+    def _dtd_invert_segment(self) -> None:
+        self.dot_to_dot_layer.invert()
+
+    def _dtd_confirm_segment(self) -> None:
+        self.dot_to_dot_layer.set_point_count(self.dtd_total_points_spin.value())
+        self.dot_to_dot_layer.confirm()
+
+    def _dtd_cancel_segment(self) -> None:
+        self.dot_to_dot_layer.cancel()
+
+    def _dtd_delete_segment(self) -> None:
+        self.dot_to_dot_layer.delete_last()
+
+    def _dtd_undo_segment(self) -> None:
+        self.dot_to_dot_layer.undo()
 
     def _build_menus(self) -> None:
         menu = self.menuBar()
@@ -307,7 +495,24 @@ class MainWindow(QMainWindow):
             line_color=self.line_color_edit.text(),
             use_bezier=self.bezier_check.isChecked() or mode in {"visual"},
             width_units=self.width_units_spin.value(),
-            classic_strategy=strategy,
+            classic_strategy=strategy if mode == "classic" else "auto",
+        )
+
+    def dot_to_dot_config(self) -> DotToDotConfig:
+        """Build a dot-to-dot configuration from the Ponto a Ponto panel."""
+        submode = self.dtd_submode_combo.currentData() or "full_figure"
+        segments = (
+            self.dot_to_dot_layer.segments() if submode == "selected_segments" else ()
+        )
+        return DotToDotConfig(
+            generation_mode=submode,
+            total_points=self.dtd_total_points_spin.value(),
+            start_number=self.dtd_start_number_spin.value(),
+            point_radius=self.dtd_point_radius_spin.value(),
+            label_offset=self.dtd_label_offset_spin.value(),
+            preserve_internal_details=self.dtd_preserve_details_check.isChecked(),
+            direction=self.dtd_direction_combo.currentData() or "forward",
+            selected_segments=segments,
         )
 
     def open_image(self) -> None:
@@ -324,6 +529,10 @@ class MainWindow(QMainWindow):
             self.image_path = Path(path)
             self.original_image = load_image(self.image_path)
             self.current_view_index = 0
+            mode, _strategy = self._selected_mode_and_strategy()
+            if mode == "dot_to_dot" and (self.dtd_submode_combo.currentData() or "full_figure") == "selected_segments":
+                # New image: reload fresh geometry and drop stale selections.
+                self._refresh_dot_to_dot_geometry()
             self.generate_tikz()
         except Exception as exc:  # pragma: no cover - user-facing guard
             QMessageBox.critical(self, "Erro ao abrir imagem", str(exc))
@@ -334,15 +543,29 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            mode, _strategy = self._selected_mode_and_strategy()
+            if mode == "dot_to_dot" and (self.dtd_submode_combo.currentData() or "full_figure") == "selected_segments":
+                self._ensure_dot_to_dot_geometry()
+                if not self.dot_to_dot_layer.segments():
+                    self.status_label.setText(
+                        "Selecione e confirme ao menos um trecho para gerar o TikZ."
+                    )
+                    return
+            dot_config = self.dot_to_dot_config() if mode == "dot_to_dot" else None
             self.build_result = build_tikz_from_image(
                 self.original_image,
                 self.processing_settings(),
                 self.tikz_options(),
+                dot_to_dot_config=dot_config,
             )
             self.result = self.build_result.processing_result
             self.code_editor.set_code(self.build_result.tikz_code)
             self._update_view()
-            self.status_label.setText(f"{len(self.result.contours)} contornos detectados")
+            dot_result = self.build_result.dot_to_dot_result
+            if dot_result is not None and dot_result.warnings:
+                self.status_label.setText(dot_result.warnings[0])
+            else:
+                self.status_label.setText(f"{len(self.result.contours)} contornos detectados")
         except Exception as exc:  # pragma: no cover - user-facing guard
             log_event("Vectorization", f"failure={exc!r}")
             QMessageBox.critical(self, "Erro ao gerar TikZ", str(exc))
@@ -356,6 +579,11 @@ class MainWindow(QMainWindow):
         self._update_view()
 
     def _update_view(self) -> None:
+        if self.dot_to_dot_layer.active:
+            # While selecting arcs, the main preview keeps showing the
+            # selection overlay with every confirmed segment.
+            self.dot_to_dot_layer.refresh_overlay()
+            return
         if self.result is None:
             return
 

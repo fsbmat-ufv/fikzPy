@@ -66,10 +66,10 @@ fikzpy
 ## Basic Workflow
 
 1. Open an image with **Arquivo > Abrir imagem**.
-2. Choose the vectorization mode. The GUI exposes three primary modes:
-   `Classic` for stable editable strokes, `Visual` for maximum visual
-   similarity with filled TikZ paths, and `Contornos` for the Canny contour
-   pipeline.
+2. Choose the vectorization mode. The GUI exposes exactly five modes:
+   `Classic Auto` and `Classic Filled` for stable editable strokes, `Visual`
+   for maximum visual similarity with filled TikZ paths, `Contornos` for the
+   Canny contour pipeline, and `Ponto a Ponto` for numbered dot-to-dot output.
 3. Adjust ink threshold, stroke smoothing, simplification, TikZ scale, line
    width, line color, and Bezier usage in the parameter panel. In `Visual`
    mode, ink threshold, stroke smoothing, smoothing, and simplification affect
@@ -141,15 +141,20 @@ No code was copied from these projects.
 ## Vectorization Notes
 
 Raster images need a raster-to-vector step before TikZ can be generated. The
-GUI exposes the three primary tracing modes:
+GUI exposes exactly five modes:
 
-- `Classic`: semantic tracing for compact editable TikZ, using centerlines for
-  thin strokes and filled paths for dark regions.
+- `Classic Auto`: semantic tracing for compact editable TikZ, using centerlines
+  for thin strokes and filled paths for dark regions, with automatic strategy.
+- `Classic Filled`: the same semantic backend forced onto filled closed shapes.
 - `Visual`: filled ink-shape tracing through SVG-style paths and `svg2tikz`.
   This is the highest visual-fidelity mode. The first SVG-to-TikZ conversion is
   post-processed into layered `\draw[fikzInk]` and `\draw[fikzErase]` commands,
   preserving cubic Bezier segments while avoiding one huge monolithic `\path`.
 - `Contornos`: classic Canny/contour tracing for geometric or filled images.
+- `Ponto a Ponto`: turns a figure into a numbered dot-to-dot drawing, either for
+  the whole main contour or for interactively selected arcs. It reuses the
+  Visual intermediate SVG on an independent copy and emits the points and
+  numbers as native TikZ. See `docs/dot_to_dot_mode.md`.
 
 The codebase also keeps experimental centerline modes such as `Vector`,
 `Fidelidade`, and `Smooth` for tests and future work, but they are no longer
