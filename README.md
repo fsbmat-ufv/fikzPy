@@ -27,15 +27,15 @@ file.
 
 1. Download `fikzPy-Setup-<version>.exe` from the
    [latest release](https://github.com/fsbmat-ufv/fikzPy/releases/latest).
-2. Run the installer. It shows the authorship information, checks for
-   Python 3.10+ (offering to download and install it automatically when
-   missing), copies the application, installs every required package into an
-   isolated virtual environment, and creates Start Menu and Desktop shortcuts.
+2. Run `fikzPy-Setup-0.1.1-Windows-x64.exe` on Windows 10/11 x64. It includes
+   Python, all application libraries, and a private TinyTeX/TeX Live distribution
+   for TikZ PDF compilation. It installs per user and creates shortcuts.
 3. Launch fikzPy from the Start Menu shortcut.
 
-An internet connection is required during installation (the Python packages
-are downloaded). A LaTeX distribution (MiKTeX or TeX Live) is optional and
-only needed to compile the generated TikZ to PDF inside the application.
+Installation and normal use work offline; no separate Python, Git or LaTeX
+installation is required. Custom LaTeX code may require additional packages.
+The optional external tracers Potrace, AutoTrace and VTracer are not bundled.
+The installer is unsigned; release assets include a SHA-256 checksum.
 
 See [installer/README.md](installer/README.md) for how to build the installer
 from source.
@@ -118,11 +118,11 @@ python -m pytest
 python scripts/build_exe.py
 ```
 
-The script wraps the PyInstaller command:
-
-```powershell
-pyinstaller --onefile --windowed --name fikzPy fikzpy/main.py
-```
+The script uses PyInstaller and explicitly collects the SVG and image-processing
+dependencies. For the complete offline installer, including LaTeX, follow
+`installer/README.md` and run `scripts/build_windows_installer.py` in the pinned
+build environment. The installer build validates the five public modes and PDF
+compilation before producing the `.exe`.
 
 ## Conceptual References
 

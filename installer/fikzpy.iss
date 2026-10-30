@@ -10,7 +10,7 @@
 ; -----------------------------------------------------------------------------
 
 #define MyAppName "fikzPy"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "Fernando de Souza Bastos"
 #define MyAppEmail "fernando.bastos@ufv.br"
 #define MyAppURL "https://github.com/fsbmat-ufv/fikzPy"
